@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { AlertCircle, CheckCircle2, ClipboardPaste, Link2, ScanSearch, X } from "lucide-react";
 import { toast } from "sonner";
@@ -20,29 +20,66 @@ type UrlBarProps = {
 /** The large link field with paste, clear, analyze and live validation. */
 export default function UrlBar({ url, onUrlChange, onAnalyze, onClear, analyzing }: UrlBarProps) {
   const [touched, setTouched] = useState(false);
+  const lastDetectedUrl = useRef<string | null>(null);
   const validation = getServices().media.validateUrl(url);
   const showError = touched && !validation.valid && url.trim().length > 0;
   const showValid = validation.valid && !analyzing;
 
-  const submit = (value: string) => {
+  const submit = useCallback((value: string) => {
     setTouched(true);
     if (!getServices().media.validateUrl(value).valid) return;
     onAnalyze(value);
-  };
+  }, [onAnalyze]);
+
+  const detectFromClipboard = useCallback(async () => {
+    if (analyzing || typeof window === "undefined") return;
+
+    try {
+      const detected = await getServices().clipboard.readSupportedUrl();
+      if (!detected || detected === lastDetectedUrl.current || detected === url) return;
+      lastDetectedUrl.current = detected;
+      onUrlChange(detected);
+      toast.info("Clipboard URL detected", { description: "Analyzing the media link…" });
+      submit(detected);
+    } catch {
+      // Graceful fallback: unsupported or blocked clipboard access should not disrupt the workflow.
+    }
+  }, [analyzing, onUrlChange, submit, url]);
 
   const paste = async () => {
     try {
-      const text = (await navigator.clipboard.readText()).trim();
+      const text = (await getServices().clipboard.readText()).trim();
       if (!text) {
         toast.info("Your clipboard is empty");
         return;
       }
+      lastDetectedUrl.current = text;
       onUrlChange(text);
       submit(text);
-    } catch {
-      toast.error("Clipboard access was blocked", { description: "Click the field and press Ctrl+V or Cmd+V instead." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Clipboard access was blocked";
+      toast.error(message, { description: "Click the field and press Ctrl+V or Cmd+V instead." });
     }
   };
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void detectFromClipboard();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void detectFromClipboard();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [detectFromClipboard]);
 
   return (
     <form
@@ -92,6 +129,7 @@ export default function UrlBar({ url, onUrlChange, onAnalyze, onClear, analyzing
               aria-label="Clear link"
               onClick={() => {
                 setTouched(false);
+                lastDetectedUrl.current = null;
                 onClear();
               }}
             >

@@ -30,6 +30,13 @@ export type MediaService = {
   getFormats: (mediaId: string) => Promise<FormatOption[]>;
 };
 
+export type ClipboardService = {
+  /** Reads raw clipboard text when the browser allows it. */
+  readText: () => Promise<string>;
+  /** Returns a supported media URL if the clipboard contains one, or null. */
+  readSupportedUrl: () => Promise<string | null>;
+};
+
 export type DownloadService = {
   /** Suggested backend endpoint: GET /downloads */
   list: () => Promise<DownloadJob[]>;
@@ -95,6 +102,7 @@ export type SettingsService = {
 
 export type AppServices = {
   media: MediaService;
+  clipboard: ClipboardService;
   downloads: DownloadService;
   library: LibraryService;
   history: HistoryService;

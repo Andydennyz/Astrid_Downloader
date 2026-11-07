@@ -1,4 +1,5 @@
 import type { AppServices } from "./contracts.ts";
+import { createMockClipboardService } from "./mock/clipboard.ts";
 import { createMockDownloadService } from "./mock/downloads.ts";
 import { createMockMediaService } from "./mock/media.ts";
 import {
@@ -18,6 +19,7 @@ import {
 function createServices(): AppServices {
   return {
     media: createMockMediaService(),
+    clipboard: createMockClipboardService(),
     downloads: createMockDownloadService(),
     library: createMockLibraryService(),
     history: createMockHistoryService(),

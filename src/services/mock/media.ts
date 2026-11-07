@@ -27,7 +27,7 @@ function detectPlatform(host: string): Platform {
   return match?.platform ?? "other";
 }
 
-function validateUrl(raw: string): UrlValidation {
+export function validateUrl(raw: string): UrlValidation {
   if (!raw.trim()) return { valid: false, reason: "Paste a link to get started." };
   let url: URL;
   try {

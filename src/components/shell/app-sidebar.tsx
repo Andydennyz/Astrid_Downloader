@@ -26,10 +26,10 @@ function NavLink({
       to={item.to}
       onClick={onNavigate}
       className={cn(
-        "group relative flex h-9 cursor-pointer items-center gap-3 rounded-lg px-2.5 text-[13px] font-medium transition-colors",
+        "group relative flex h-9 cursor-pointer items-center gap-3 rounded-lg px-2.5 text-[13px] font-medium transition-all duration-200 hover:-translate-x-0.5 hover:bg-sidebar-accent/80",
         active
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-          : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]"
+          : "text-sidebar-foreground/65 hover:text-sidebar-foreground",
         collapsed && "justify-center px-0",
       )}
     >

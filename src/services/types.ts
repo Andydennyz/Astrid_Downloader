@@ -105,6 +105,8 @@ export type DownloadStatus =
   | "failed"
   | "cancelled";
 
+export type DownloadPriority = "low" | "normal" | "high";
+
 export type DownloadJob = {
   id: string;
   request: DownloadRequest;
@@ -112,6 +114,7 @@ export type DownloadJob = {
   extension: FileExtension;
   /** Human label such as "1080p" or "320 kbps". */
   qualityLabel: string;
+  priority?: DownloadPriority;
   status: DownloadStatus;
   /** 0 to 1. */
   progress: number;

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Menu, Plus, Settings } from "lucide-react";
+import { BookOpenText, History, ListOrdered, Menu, Plus, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
 import ThemeToggle from "@/components/theme-toggle.tsx";
 import { findNav, pageTitle } from "@/lib/navigation.ts";
@@ -7,7 +7,19 @@ import ActivityIndicator from "./activity-indicator.tsx";
 import NotificationsMenu from "./notifications-menu.tsx";
 import SearchPalette from "./search-palette.tsx";
 
-export default function TopBar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
+export default function TopBar({
+  showSidePanelToggles = true,
+  onOpenMobileNav,
+  onToggleQueue,
+  onToggleLibrary,
+  onToggleHistorySettings,
+}: {
+  showSidePanelToggles?: boolean;
+  onOpenMobileNav: () => void;
+  onToggleQueue: () => void;
+  onToggleLibrary: () => void;
+  onToggleHistorySettings: () => void;
+}) {
   const { pathname } = useLocation();
   const nav = findNav(pathname);
 
@@ -24,6 +36,19 @@ export default function TopBar({ onOpenMobileNav }: { onOpenMobileNav: () => voi
         <SearchPalette />
       </div>
       <div className="ml-auto flex items-center gap-1.5">
+        {showSidePanelToggles && (
+          <>
+            <Button variant="ghost" size="icon" aria-label="Toggle media library" onClick={onToggleLibrary} className="xl:hidden">
+              <BookOpenText />
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Toggle queue" onClick={onToggleQueue} className="xl:hidden">
+              <ListOrdered />
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Toggle history and settings" onClick={onToggleHistorySettings} className="xl:hidden">
+              <History />
+            </Button>
+          </>
+        )}
         <ActivityIndicator />
         <NotificationsMenu />
         <ThemeToggle />

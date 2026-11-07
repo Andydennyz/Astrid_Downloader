@@ -5,7 +5,8 @@ export class ServiceError extends Error {
     | "UNAVAILABLE"
     | "NOT_FOUND"
     | "INVALID_STATE"
-    | "NETWORK";
+    | "NETWORK"
+    | "CLIPBOARD_UNAVAILABLE";
 
   constructor(code: ServiceError["code"], message: string) {
     super(message);
