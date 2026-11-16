@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
-  ArrowUpDown,
   Clock3,
   Gauge,
   GripVertical,
@@ -177,26 +176,6 @@ export default function QueueSidebar({ open, onToggle }: { open: boolean; onTogg
     [jobs, priorityOverrides],
   );
 
-  useEffect(() => {
-    setManualOrder((current) => {
-      const next = current.filter((id) => activeJobs.some((job) => job.id === id));
-      for (const job of activeJobs) {
-        if (!next.includes(job.id)) next.push(job.id);
-      }
-      return next;
-    });
-  }, [activeJobs]);
-
-  useEffect(() => {
-    if (!activeJobs.length) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !activeJobs.some((job) => job.id === selectedId)) {
-      setSelectedId(activeJobs[0].id);
-    }
-  }, [activeJobs, selectedId]);
-
   const orderedJobs = useMemo(() => {
     const sorted = [...activeJobs];
     if (sortMode === "manual") {
@@ -251,7 +230,16 @@ export default function QueueSidebar({ open, onToggle }: { open: boolean; onTogg
           <div className="flex items-center gap-2">
             <ListOrdered className="size-4 text-primary" />
             <div>
-              <div className="text-sm font-semibold">Download queue</div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">Download queue</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.2em] text-emerald-300">
+                  <span className="relative flex size-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70" />
+                    <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
+                  </span>
+                  Live
+                </span>
+              </div>
               <div className="text-[11px] text-sidebar-foreground/60">{activeCount} active</div>
             </div>
           </div>
@@ -304,7 +292,13 @@ export default function QueueSidebar({ open, onToggle }: { open: boolean; onTogg
         </div>
 
         <div className="flex items-center justify-between px-3 pb-2">
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/55">Live jobs</div>
+          <div className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/55">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/80" />
+              <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+            </span>
+            Live jobs
+          </div>
           <Button type="button" variant="ghost" size="xs" nativeButton={false} render={<Link to="/queue" />} className="gap-1">
             Full queue
           </Button>

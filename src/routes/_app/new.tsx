@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { RotateCcw, ShieldAlert } from "lucide-react";
 import { z } from "zod";
 import { PageContainer } from "@/components/layout.tsx";
+import DataLoadError from "@/components/data-load-error.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
   ErrorState,
@@ -32,7 +33,8 @@ function NewDownloadPage() {
   const search = Route.useSearch();
   const [url, setUrl] = useState(search.url ?? "");
   const { state, analyze, reset } = useAnalyzer();
-  const { data: settings } = useSettings();
+  const settingsQuery = useSettings();
+  const settings = settingsQuery.data;
   const autoRan = useRef(false);
 
   // A link passed in the address (e.g. "?url=...") is analyzed once on arrival.
@@ -81,6 +83,14 @@ function NewDownloadPage() {
               <RotateCcw />
               Try again
             </Button>
+            {state.requiresAuthentication && (
+              <Link
+                to="/auth/sign-in"
+                className="inline-flex items-center rounded-md px-3 text-sm font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                Sign in
+              </Link>
+            )}
             <Button variant="ghost" onClick={clear}>
               Use another link
             </Button>
@@ -88,7 +98,9 @@ function NewDownloadPage() {
         </ErrorState>
       )}
       {state.status === "ready" &&
-        (settings ? (
+        (settingsQuery.isError ? (
+          <DataLoadError error={settingsQuery.error} onRetry={() => void settingsQuery.refetch()} />
+        ) : settings ? (
           <DownloadComposer key={state.info.id} info={state.info} settings={settings} onDone={clear} />
         ) : (
           <Skeleton className="h-96 rounded-2xl" />

@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState } from "react";
-import { errorMessage } from "@/services/errors.ts";
+import { errorMessage, ServiceError } from "@/services/errors.ts";
 import { getServices, type MediaInfo } from "@/services/index.ts";
 
 export type AnalyzerState =
   | { status: "idle" }
   | { status: "analyzing"; url: string }
   | { status: "ready"; info: MediaInfo }
-  | { status: "error"; url: string; message: string };
+  | { status: "error"; url: string; message: string; requiresAuthentication: boolean };
 
 /** Drives the analyze flow and ignores results from superseded requests. */
 export function useAnalyzer() {
@@ -21,7 +21,12 @@ export function useAnalyzer() {
       if (id === requestId.current) setState({ status: "ready", info });
     } catch (error) {
       if (id === requestId.current) {
-        setState({ status: "error", url, message: errorMessage(error, "We couldn't read that link.") });
+        setState({
+          status: "error",
+          url,
+          message: errorMessage(error, "We couldn't read that link."),
+          requiresAuthentication: error instanceof ServiceError && error.code === "INVALID_STATE",
+        });
       }
     }
   }, []);

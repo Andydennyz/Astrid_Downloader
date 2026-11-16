@@ -1,7 +1,7 @@
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 import { withErrorPage } from "@/lib/start-error-page.ts";
 
-// Hercules adds HSTS and X-Frame-Options itself, from the app's Security settings.
+// Add baseline security headers for the app shell and API responses.
 const SECURITY_HEADERS = [
   ["x-content-type-options", "nosniff"],
   ["referrer-policy", "strict-origin-when-cross-origin"],

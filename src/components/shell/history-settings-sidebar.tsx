@@ -2,22 +2,25 @@ import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, CheckCircle2, Clock3, History, Settings2, SlidersHorizontal, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useHistory, useSettings } from "@/hooks/use-media-data.ts";
 import { formatBytes } from "@/lib/format.ts";
 import { cn } from "@/lib/utils.ts";
 
 export default function HistorySettingsSidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const { data: entries = [] } = useHistory();
+  const historyQuery = useHistory();
+  const entries = historyQuery.data ?? [];
   const { data: settings } = useSettings();
   const [tab, setTab] = useState<"history" | "settings">("history");
 
   const stats = useMemo(() => {
+    const entries = historyQuery.data ?? [];
     const completed = entries.filter((entry) => entry.status === "completed").length;
     const failed = entries.filter((entry) => entry.status === "failed").length;
     const cancelled = entries.filter((entry) => entry.status === "cancelled").length;
     const successRate = entries.length ? Math.round((completed / entries.length) * 100) : 0;
     return { completed, failed, cancelled, successRate };
-  }, [entries]);
+  }, [historyQuery.data]);
 
   const recent = [...entries].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 4);
 
@@ -35,7 +38,13 @@ export default function HistorySettingsSidebar({ open, onToggle }: { open: boole
             <div>
               <div className="text-sm font-semibold">{tab === "history" ? "History" : "Settings"}</div>
               <div className="text-[11px] text-sidebar-foreground/60">
-                {tab === "history" ? `${entries.length} attempts` : settings ? "Quick preferences" : "Loading"}
+                {tab === "history"
+                  ? historyQuery.isLoading
+                    ? "Loading history…"
+                    : `${entries.length} attempts`
+                  : settings
+                    ? "Quick preferences"
+                    : "Loading"}
               </div>
             </div>
           </div>
@@ -94,7 +103,18 @@ export default function HistorySettingsSidebar({ open, onToggle }: { open: boole
             </div>
 
             <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3">
-              {recent.length === 0 ? (
+              {historyQuery.isError ? (
+                <div role="alert" className="rounded-xl border border-destructive/30 p-3 text-center text-xs text-muted-foreground">
+                  <p>{historyQuery.error instanceof Error ? historyQuery.error.message : "Could not load history."}</p>
+                  <button type="button" className="mt-2 text-primary underline" onClick={() => void historyQuery.refetch()}>
+                    Retry
+                  </button>
+                </div>
+              ) : historyQuery.isLoading ? (
+                Array.from({ length: 3 }).map((_, index) => (
+                  <Skeleton key={index} className="h-20 rounded-xl" />
+                ))
+              ) : recent.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-sidebar-border bg-sidebar-accent/25 p-4 text-center text-sm text-sidebar-foreground/60">
                   No history yet.
                 </div>

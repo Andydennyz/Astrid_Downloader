@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, createFileRoute, useHydrated } from "@tanstack/react-router";
 import { ArrowRight, Link2 } from "lucide-react";
 import { PageContainer } from "@/components/layout.tsx";
+import DataLoadError from "@/components/data-load-error.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { useHistory, useOverview } from "@/hooks/use-media-data.ts";
 import ActiveNow from "./-components/active-now.tsx";
@@ -27,8 +28,10 @@ function Greeting() {
 
 function OverviewPage() {
   const [range, setRange] = useState<RangeDays>("14");
-  const { data: stats } = useOverview(Number(range));
-  const { data: history } = useHistory();
+  const overviewQuery = useOverview(Number(range));
+  const historyQuery = useHistory();
+  const stats = overviewQuery.data;
+  const history = historyQuery.data;
 
   return (
     <PageContainer className="flex flex-col gap-5">
@@ -45,6 +48,12 @@ function OverviewPage() {
           <ArrowRight className="opacity-60" />
         </Button>
       </div>
+      {overviewQuery.isError && (
+        <DataLoadError error={overviewQuery.error} onRetry={() => void overviewQuery.refetch()} />
+      )}
+      {historyQuery.isError && (
+        <DataLoadError error={historyQuery.error} onRetry={() => void historyQuery.refetch()} />
+      )}
       <StatsGrid stats={stats} />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0">
@@ -52,7 +61,7 @@ function OverviewPage() {
         </div>
         <ActiveNow />
       </div>
-      <RecentDownloads entries={history?.slice(0, 7)} />
+      {!historyQuery.isError && <RecentDownloads entries={history?.slice(0, 7)} />}
     </PageContainer>
   );
 }

@@ -98,7 +98,7 @@ const PICKER_FOLDERS = [
 ];
 
 /**
- * Browser stand-in for the desktop filesystem bridge. Opening and revealing
+ * Browser stand-in for the desktop filesystem bridge. Opening and saving
  * resolve after a short delay; copying uses the real clipboard.
  */
 export function createMockFileSystemService(): FileSystemService {
@@ -106,7 +106,7 @@ export function createMockFileSystemService(): FileSystemService {
     async openFile() {
       await delay(300);
     },
-    async revealInFolder() {
+    async saveFileToDevice() {
       await delay(300);
     },
     async copyPath(path) {

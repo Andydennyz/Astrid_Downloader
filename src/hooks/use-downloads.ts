@@ -13,6 +13,8 @@ export type AppNotification = {
 export type DownloadsContextValue = {
   jobs: DownloadJob[];
   loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
   activeCount: number;
   /** Combined progress (0 to 1) of all active downloads. */
   aggregateProgress: number;

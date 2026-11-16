@@ -1,32 +1,11 @@
 import type { AppServices } from "./contracts.ts";
-import { createMockClipboardService } from "./mock/clipboard.ts";
-import { createMockDownloadService } from "./mock/downloads.ts";
-import { createMockMediaService } from "./mock/media.ts";
-import {
-  createLocalSettingsService,
-  createMockFileSystemService,
-  createMockHistoryService,
-  createMockLibraryService,
-  createMockStatsService,
-} from "./mock/other.ts";
+import { createHttpServices } from "./http.ts";
 
 /**
  * The single place that decides which implementation the app uses.
- *
- * To connect a real backend, write `createHttpServices(baseUrl)` returning the
- * same `AppServices` shape and swap it in here. No UI code needs to change.
  */
 function createServices(): AppServices {
-  return {
-    media: createMockMediaService(),
-    clipboard: createMockClipboardService(),
-    downloads: createMockDownloadService(),
-    library: createMockLibraryService(),
-    history: createMockHistoryService(),
-    stats: createMockStatsService(),
-    fileSystem: createMockFileSystemService(),
-    settings: createLocalSettingsService(),
-  };
+  return createHttpServices();
 }
 
 let instance: AppServices | null = null;

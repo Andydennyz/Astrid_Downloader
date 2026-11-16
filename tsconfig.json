@@ -10,6 +10,8 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
@@ -22,10 +24,9 @@
     "noUncheckedSideEffectImports": true,
 
     "paths": {
-      "@/convex/*": ["./convex/*"],
       "@/*": ["./src/*"]
     }
   },
   "include": ["src", "vite.config.ts", "vitest.config.ts"],
-  "exclude": ["convex", "dist", ".output", ".tanstack"]
+  "exclude": ["dist", ".output", ".tanstack"]
 }

@@ -7,9 +7,6 @@ blockExoticSubdeps: true
 
 minimumReleaseAge: 4320
 
-minimumReleaseAgeExclude:
-  - "@usehercules/*"
-
 onlyBuiltDependencies:
   - "@tailwindcss/oxide"
   - esbuild

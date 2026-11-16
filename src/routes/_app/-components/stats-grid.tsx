@@ -59,7 +59,17 @@ export default function StatsGrid({ stats }: { stats: OverviewStats | undefined 
     { label: "Completed", value: stats.completed.toLocaleString(), hint: `${successRate}% success rate`, icon: CheckCircle2, tone: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400" },
     { label: "Active now", value: activeCount.toString(), hint: queued ? `${queued} waiting in queue` : "Live from the queue", icon: Activity, tone: "bg-accent/10 text-accent ring-accent/20", live: activeCount > 0 },
     { label: "Failed", value: stats.failed.toString(), hint: stats.failed ? "Retry from history" : "No failures", icon: XCircle, tone: "bg-destructive/10 text-destructive ring-destructive/20" },
-    { label: "Storage used", value: formatBytes(stats.storageBytes), hint: "Across your library", icon: HardDrive, tone: "bg-amber-500/10 text-amber-600 ring-amber-500/20 dark:text-amber-400" },
+    {
+      label: "Storage used",
+      value: formatBytes(stats.storageBytes),
+      hint: stats.storageQuotaBytes
+        ? `${formatBytes(stats.storageRemainingBytes ?? 0)} available of ${formatBytes(stats.storageQuotaBytes)} quota`
+        : stats.storageDiskFreeBytes !== undefined
+          ? `${formatBytes(stats.storageDiskFreeBytes)} free on disk`
+          : "Across your library",
+      icon: HardDrive,
+      tone: "bg-amber-500/10 text-amber-600 ring-amber-500/20 dark:text-amber-400",
+    },
   ];
 
   return (

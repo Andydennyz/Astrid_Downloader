@@ -186,6 +186,9 @@ export type OverviewStats = {
   completed: number;
   failed: number;
   storageBytes: number;
+  storageQuotaBytes?: number | null;
+  storageRemainingBytes?: number | null;
+  storageDiskFreeBytes?: number;
   activity: ActivityPoint[];
 };
 

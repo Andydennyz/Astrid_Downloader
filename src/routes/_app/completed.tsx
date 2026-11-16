@@ -1,10 +1,15 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, FolderOpen, Grid2x2, List, Search, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Copy, Download, Grid2x2, List, Search, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { PageContainer, Panel } from "@/components/layout.tsx";
+import DataLoadError from "@/components/data-load-error.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useFileActions, useLibrary } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
+import { errorMessage } from "@/services/errors.ts";
 import { getServices, type LibraryItem } from "@/services/index.ts";
 
 export const Route = createFileRoute("/_app/completed")({
@@ -15,10 +20,10 @@ export const Route = createFileRoute("/_app/completed")({
 type SortMode = "newest" | "oldest" | "size" | "title";
 type ViewMode = "grid" | "list";
 
-function LibraryCard({ item, onOpen, onReveal, onCopy, onRemove }: {
+function LibraryCard({ item, onOpen, onSave, onCopy, onRemove }: {
   item: LibraryItem;
   onOpen: (path: string) => void;
-  onReveal: (path: string) => void;
+  onSave: (path: string) => void;
   onCopy: (path: string) => void;
   onRemove: (id: string) => void;
 }) {
@@ -46,8 +51,8 @@ function LibraryCard({ item, onOpen, onReveal, onCopy, onRemove }: {
           <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => onOpen(item.filePath)}>
             Open
           </Button>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onReveal(item.filePath)} aria-label={`Reveal ${item.title} in folder`}>
-            <FolderOpen className="size-3.5" />
+          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onSave(item.filePath)} aria-label={`Save ${item.title} to this device`}>
+            <Download className="size-3.5" />
           </Button>
           <Button type="button" variant="ghost" size="icon-sm" onClick={() => onCopy(item.filePath)} aria-label={`Copy ${item.title} path`}>
             <Copy className="size-3.5" />
@@ -66,11 +71,22 @@ function Page() {
   const [kind, setKind] = useState<"all" | "video" | "audio">("all");
   const [sortBy, setSortBy] = useState<SortMode>("newest");
   const [view, setView] = useState<ViewMode>("grid");
-  const { data: items = [] } = useLibrary();
-  const { open, reveal, copyPath } = useFileActions();
+  const queryClient = useQueryClient();
+  const libraryQuery = useLibrary();
+  const { open, saveToDevice, copyPath } = useFileActions();
+
+  const removeItem = async (id: string) => {
+    try {
+      await getServices().library.remove(id);
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
+      toast.success("Removed from library");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not remove this media item."));
+    }
+  };
 
   const visible = useMemo(() => {
-    const next = items.filter((item) => {
+    const next = (libraryQuery.data ?? []).filter((item) => {
       const matchesKind = kind === "all" || item.kind === kind;
       const haystack = `${item.title} ${item.creator} ${item.filename}`.toLowerCase();
       const matchesQuery = haystack.includes(query.trim().toLowerCase());
@@ -87,7 +103,7 @@ function Page() {
       }
     });
     return next;
-  }, [items, kind, query, sortBy]);
+  }, [kind, libraryQuery.data, query, sortBy]);
 
   return (
     <PageContainer className="flex flex-col gap-5">
@@ -141,7 +157,17 @@ function Page() {
           </select>
         </div>
 
-        {visible.length === 0 ? (
+        {libraryQuery.isError ? (
+          <div className="px-5 pb-5">
+            <DataLoadError error={libraryQuery.error} onRetry={() => void libraryQuery.refetch()} />
+          </div>
+        ) : libraryQuery.isLoading ? (
+          <div className="grid gap-4 px-5 pb-5 md:grid-cols-2 2xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={index} className="h-80 rounded-2xl" />
+            ))}
+          </div>
+        ) : visible.length === 0 ? (
           <div className="px-5 pb-6">
             <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
               No completed downloads match your current filters.
@@ -154,9 +180,9 @@ function Page() {
                 key={item.id}
                 item={item}
                 onOpen={open}
-                onReveal={reveal}
+                onSave={saveToDevice}
                 onCopy={copyPath}
-                onRemove={(id) => void getServices().library.remove(id)}
+                onRemove={(id) => void removeItem(id)}
               />
             ))}
           </div>
@@ -181,13 +207,13 @@ function Page() {
                   <Button type="button" variant="outline" size="sm" onClick={() => open(item.filePath)}>
                     Open
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => reveal(item.filePath)}>
-                    Reveal
+                  <Button type="button" variant="ghost" size="sm" onClick={() => saveToDevice(item.filePath)}>
+                    Save to device
                   </Button>
                   <Button type="button" variant="ghost" size="sm" onClick={() => copyPath(item.filePath)}>
                     Copy path
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => void getServices().library.remove(item.id)}>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => void removeItem(item.id)}>
                     Remove
                   </Button>
                 </div>

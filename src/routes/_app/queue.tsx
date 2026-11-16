@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Clock3, Download, Eye, PauseCircle, Play, RotateCcw, Trash2, XCircle } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
+import DataLoadError from "@/components/data-load-error.tsx";
 import StatusBadge from "@/components/status-badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useDownloads } from "@/hooks/use-downloads.ts";
 import { formatBytes, formatEta, formatSpeed } from "@/lib/format.ts";
 import { cn } from "@/lib/utils.ts";
@@ -117,7 +119,7 @@ function QueueCard({ job, onPause, onResume, onCancel, onRetry, onRemove }: {
 }
 
 function Page() {
-  const { jobs, pause, resume, cancel, retry, remove, activeCount } = useDownloads();
+  const { jobs, loading, error, refresh, pause, resume, cancel, retry, remove, activeCount } = useDownloads();
 
   return (
     <PageContainer className="flex flex-col gap-5">
@@ -126,19 +128,32 @@ function Page() {
           <p className="text-sm text-muted-foreground">Live renderer</p>
           <h2 className="font-display text-2xl font-semibold tracking-tight">Download queue</h2>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-sm text-muted-foreground">
-          <span className="inline-flex size-2 rounded-full bg-primary" />
-          {activeCount} active jobs
+        <div className="flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-sm text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
+          <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
+            <span className="relative flex size-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/80" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-emerald-400" />
+            </span>
+            Live
+          </span>
+          <span className="tabular-nums">{activeCount}</span>
+          <span>active jobs</span>
         </div>
       </div>
+
+      {error && <DataLoadError error={error} onRetry={() => void refresh()} />}
 
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div>
             <h3 className="text-[15px] font-semibold">Queue overview</h3>
-            <p className="text-sm text-muted-foreground">Real-time mock progress from the simulated backend.</p>
+            <p className="text-sm text-muted-foreground">Real-time status updates from the database-backed backend.</p>
           </div>
-          <div className="flex gap-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-300">
+              <span className="inline-flex size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Live
+            </span>
             <span className="rounded-full border border-border px-2.5 py-1">{jobs.filter((job) => job.status === "downloading").length} downloading</span>
             <span className="rounded-full border border-border px-2.5 py-1">{jobs.filter((job) => job.status === "queued").length} queued</span>
             <span className="rounded-full border border-border px-2.5 py-1">{jobs.filter((job) => job.status === "paused").length} paused</span>
@@ -146,7 +161,11 @@ function Page() {
         </div>
 
         <div className="space-y-3 px-5 pb-5">
-          {jobs.length === 0 ? (
+          {loading ? (
+            Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={index} className="h-32 rounded-2xl" />
+            ))
+          ) : jobs.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
               The queue is empty. Add a new link to watch it appear here.
             </div>

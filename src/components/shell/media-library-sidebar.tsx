@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { AudioLines, BookOpenText, Clapperboard, FolderOpen, Library, Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useLibrary } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
 import { cn } from "@/lib/utils.ts";
@@ -22,24 +23,16 @@ function StatCard({ label, value, kind }: { label: string; value: string; kind: 
 }
 
 export default function MediaLibrarySidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const { data: items = [] } = useLibrary();
+  const libraryQuery = useLibrary();
+  const items = libraryQuery.data ?? [];
   const [filter, setFilter] = useState<"all" | "video" | "audio">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const filteredItems = useMemo(() => {
+    const items = libraryQuery.data ?? [];
     const next = filter === "all" ? items : items.filter((item) => item.kind === filter);
     return [...next].sort((a, b) => new Date(b.downloadedAt).getTime() - new Date(a.downloadedAt).getTime());
-  }, [filter, items]);
-
-  useEffect(() => {
-    if (filteredItems.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !filteredItems.some((item) => item.id === selectedId)) {
-      setSelectedId(filteredItems[0].id);
-    }
-  }, [filteredItems, selectedId]);
+  }, [filter, libraryQuery.data]);
 
   const selected = filteredItems.find((item) => item.id === selectedId) ?? filteredItems[0] ?? null;
   const videoCount = items.filter((item) => item.kind === "video").length;
@@ -58,7 +51,9 @@ export default function MediaLibrarySidebar({ open, onToggle }: { open: boolean;
             <BookOpenText className="size-4 text-primary" />
             <div>
               <div className="text-sm font-semibold">Media library</div>
-              <div className="text-[11px] text-sidebar-foreground/60">{items.length} saved items</div>
+              <div className="text-[11px] text-sidebar-foreground/60">
+                {libraryQuery.isLoading ? "Loading library…" : `${items.length} saved items`}
+              </div>
             </div>
           </div>
           <button
@@ -100,7 +95,18 @@ export default function MediaLibrarySidebar({ open, onToggle }: { open: boolean;
         </div>
 
         <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3">
-          {filteredItems.length === 0 ? (
+          {libraryQuery.isError ? (
+            <div role="alert" className="rounded-xl border border-destructive/30 p-3 text-center text-xs text-muted-foreground">
+              <p>{libraryQuery.error instanceof Error ? libraryQuery.error.message : "Could not load the media library."}</p>
+              <button type="button" className="mt-2 text-primary underline" onClick={() => void libraryQuery.refetch()}>
+                Retry
+              </button>
+            </div>
+          ) : libraryQuery.isLoading ? (
+            Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={index} className="h-20 rounded-xl" />
+            ))
+          ) : filteredItems.length === 0 ? (
             <div className="rounded-xl border border-dashed border-sidebar-border bg-sidebar-accent/25 p-4 text-center text-sm text-sidebar-foreground/60">
               No media saved yet.
             </div>

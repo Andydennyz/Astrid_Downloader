@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { formatDistanceToNowStrict } from "date-fns";
+import { formatDistanceToNowStrict, isValid } from "date-fns";
 import { CalendarDays, Clock, Eye, Layers, User } from "lucide-react";
 import { Panel } from "@/components/layout.tsx";
 import MediaThumb from "@/components/media-thumb.tsx";
@@ -33,6 +33,7 @@ function ChipRow({ label, items }: { label: string; items: string[] }) {
 /** Rich preview of analyzed media plus a summary of the streams it offers. */
 export default function MediaPreview({ info }: { info: MediaInfo }) {
   const video = hasVideo(info);
+  const uploadedAt = new Date(info.uploadedAt);
   const resolutions = [...new Set(info.formats.filter((f) => f.kind === "video").map((f) => f.height ?? 0))]
     .sort((a, b) => b - a)
     .map((h) => `${h}p`);
@@ -69,7 +70,9 @@ export default function MediaPreview({ info }: { info: MediaInfo }) {
               <Meta icon={User}>{info.creator}</Meta>
               <Meta icon={Clock}>{formatDuration(info.durationSec)}</Meta>
               {info.viewCount !== undefined && <Meta icon={Eye}>{formatCount(info.viewCount)} plays</Meta>}
-              <Meta icon={CalendarDays}>{formatDistanceToNowStrict(new Date(info.uploadedAt), { addSuffix: true })}</Meta>
+              {isValid(uploadedAt) && (
+                <Meta icon={CalendarDays}>{formatDistanceToNowStrict(uploadedAt, { addSuffix: true })}</Meta>
+              )}
               <Meta icon={Layers}>{info.formats.length} streams</Meta>
             </div>
           </div>

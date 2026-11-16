@@ -1,11 +1,13 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { BookOpenText, History, ListOrdered, Menu, Plus, Settings } from "lucide-react";
+import { BookOpenText, History, ListOrdered, LogOut, Menu, Plus, Settings } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button.tsx";
 import ThemeToggle from "@/components/theme-toggle.tsx";
 import { findNav, pageTitle } from "@/lib/navigation.ts";
 import ActivityIndicator from "./activity-indicator.tsx";
 import NotificationsMenu from "./notifications-menu.tsx";
 import SearchPalette from "./search-palette.tsx";
+import { useAuth } from "@/hooks/use-auth.ts";
 
 export default function TopBar({
   showSidePanelToggles = true,
@@ -21,6 +23,7 @@ export default function TopBar({
   onToggleHistorySettings: () => void;
 }) {
   const { pathname } = useLocation();
+  const { signOut } = useAuth();
   const nav = findNav(pathname);
 
   return (
@@ -52,6 +55,19 @@ export default function TopBar({
         <ActivityIndicator />
         <NotificationsMenu />
         <ThemeToggle />
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Sign out"
+          title="Sign out"
+          onClick={() => {
+            void signOut().catch((error: unknown) => {
+              toast.error(error instanceof Error ? error.message : "Could not sign out.");
+            });
+          }}
+        >
+          <LogOut />
+        </Button>
         <Button variant="ghost" size="icon" aria-label="Settings" nativeButton={false} render={<Link to="/settings" />}>
           <Settings />
         </Button>

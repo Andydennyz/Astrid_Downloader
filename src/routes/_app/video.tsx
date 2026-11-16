@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Clapperboard, Search } from "lucide-react";
+import { Clapperboard, Download, Search } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
+import DataLoadError from "@/components/data-load-error.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { useLibrary } from "@/hooks/use-media-data.ts";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
+import { useFileActions, useLibrary } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
 
 export const Route = createFileRoute("/_app/video")({
@@ -14,16 +16,18 @@ export const Route = createFileRoute("/_app/video")({
 function Page() {
   const [query, setQuery] = useState("");
   const [resolution, setResolution] = useState("all");
-  const { data: items = [] } = useLibrary({ kind: "video" });
+  const libraryQuery = useLibrary({ kind: "video" });
+  const { open, saveToDevice } = useFileActions();
 
   const visible = useMemo(() => {
+    const items = libraryQuery.data ?? [];
     return items.filter((item) => {
       const haystack = `${item.title} ${item.creator} ${item.filename}`.toLowerCase();
       const matchesText = haystack.includes(query.trim().toLowerCase());
       const matchesResolution = resolution === "all" || `${item.height ?? 0}p` === resolution;
       return matchesText && matchesResolution;
     });
-  }, [items, query, resolution]);
+  }, [libraryQuery.data, query, resolution]);
 
   return (
     <PageContainer className="flex flex-col gap-5">
@@ -34,7 +38,7 @@ function Page() {
         </div>
         <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-sm text-muted-foreground">
           <Clapperboard className="size-3.5" />
-          {items.length} videos
+          {libraryQuery.data?.length ?? 0} videos
         </div>
       </div>
 
@@ -63,7 +67,17 @@ function Page() {
           </select>
         </div>
 
-        {visible.length === 0 ? (
+        {libraryQuery.isError ? (
+          <div className="px-5 pb-5">
+            <DataLoadError error={libraryQuery.error} onRetry={() => void libraryQuery.refetch()} />
+          </div>
+        ) : libraryQuery.isLoading ? (
+          <div className="grid gap-4 px-5 pb-5 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={index} className="h-80 rounded-2xl" />
+            ))}
+          </div>
+        ) : visible.length === 0 ? (
           <div className="px-5 pb-6">
             <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
               No video downloads match the current filters.
@@ -90,11 +104,12 @@ function Page() {
                     <span>{formatBytes(item.sizeBytes)}</span>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <Button type="button" variant="outline" size="sm" className="flex-1">
+                    <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => void open(item.filePath)}>
                       Watch
                     </Button>
-                    <Button type="button" variant="ghost" size="sm">
-                      Open
+                    <Button type="button" variant="ghost" size="sm" onClick={() => void saveToDevice(item.filePath)}>
+                      <Download className="size-3.5" />
+                      Save to device
                     </Button>
                   </div>
                 </div>

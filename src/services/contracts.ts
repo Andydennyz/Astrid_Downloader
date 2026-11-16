@@ -63,7 +63,7 @@ export type DownloadService = {
 export type LibraryService = {
   /** Suggested backend endpoint: GET /library?kind=&search= */
   list: (query?: LibraryQuery) => Promise<LibraryItem[]>;
-  /** Removes the library entry only; the file stays on disk. */
+  /** Removes the library entry and its managed file from disk. */
   remove: (itemId: string) => Promise<void>;
   /** Fires whenever the library changes (download finished, item removed). */
   subscribe: (listener: () => void) => Unsubscribe;
@@ -87,7 +87,7 @@ export type StatsService = {
 /** Local filesystem bridge. A desktop shell (Tauri, Electron, native) implements this. */
 export type FileSystemService = {
   openFile: (path: string) => Promise<void>;
-  revealInFolder: (path: string) => Promise<void>;
+  saveFileToDevice: (path: string) => Promise<void>;
   copyPath: (path: string) => Promise<void>;
   /** Opens a native folder picker. Resolves null when dismissed. */
   chooseFolder: (current: string) => Promise<string | null>;

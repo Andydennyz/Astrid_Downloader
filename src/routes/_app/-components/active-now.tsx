@@ -4,13 +4,14 @@ import { Panel, PanelHeader } from "@/components/layout.tsx";
 import MediaThumb from "@/components/media-thumb.tsx";
 import StatusBadge from "@/components/status-badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import DataLoadError from "@/components/data-load-error.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { ACTIVE_STATUSES, useDownloads } from "@/hooks/use-downloads.ts";
 import { formatBytes, formatEta, formatSpeed } from "@/lib/format.ts";
 
 /** Compact live view of what is downloading right now. */
 export default function ActiveNow() {
-  const { jobs, loading, pause, resume } = useDownloads();
+  const { jobs, loading, error, refresh, pause, resume } = useDownloads();
   const items = jobs.filter((j) => ACTIVE_STATUSES.has(j.status) || j.status === "paused").slice(0, 4);
 
   return (
@@ -28,6 +29,8 @@ export default function ActiveNow() {
       <div className="flex flex-1 flex-col gap-1 px-3 pb-3">
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="mx-2 h-[62px] rounded-xl" />)
+        ) : error ? (
+          <DataLoadError error={error} onRetry={() => void refresh()} />
         ) : items.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 py-10 text-center">
             <p className="text-sm text-muted-foreground">Nothing in progress.</p>

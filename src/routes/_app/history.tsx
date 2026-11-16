@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { History, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
+import DataLoadError from "@/components/data-load-error.tsx";
 import StatusBadge from "@/components/status-badge.tsx";
 import { useHistory } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
-import type { HistoryEntry } from "@/services/index.ts";
 
 export const Route = createFileRoute("/_app/history")({
   head: () => ({ meta: [{ title: "Download History · Astrid Downloader" }] }),
@@ -16,11 +16,16 @@ function Page() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | "completed" | "failed" | "cancelled">("all");
   const [dateRange, setDateRange] = useState<"all" | "7d" | "30d" | "90d">("all");
-  const { data: entries = [] } = useHistory();
+  const [now, setNow] = useState(() => Date.now());
+  const historyQuery = useHistory();
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const visible = useMemo(() => {
-    const now = Date.now();
-    return entries.filter((entry) => {
+    return (historyQuery.data ?? []).filter((entry) => {
       const matchesStatus = status === "all" || entry.status === status;
       const matchesQuery = `${entry.title} ${entry.creator} ${entry.sourceUrl}`.toLowerCase().includes(query.trim().toLowerCase());
       const ageMs = now - new Date(entry.timestamp).getTime();
@@ -31,7 +36,7 @@ function Page() {
         (dateRange === "90d" && ageMs <= 90 * 24 * 60 * 60 * 1000);
       return matchesStatus && matchesQuery && matchesDate;
     });
-  }, [dateRange, entries, query, status]);
+  }, [dateRange, historyQuery.data, now, query, status]);
 
   return (
     <PageContainer className="flex flex-col gap-5">
@@ -41,9 +46,12 @@ function Page() {
           <h2 className="font-display text-2xl font-semibold tracking-tight">Download history</h2>
         </div>
         <div className="rounded-full border border-border bg-card/70 px-3 py-1.5 text-sm text-muted-foreground">
-          {entries.length} entries
+          {historyQuery.data?.length ?? 0} entries
         </div>
       </div>
+      {historyQuery.isError && (
+        <DataLoadError error={historyQuery.error} onRetry={() => void historyQuery.refetch()} />
+      )}
 
       <Panel>
         <div className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center">
@@ -91,7 +99,15 @@ function Page() {
               </tr>
             </thead>
             <tbody>
-              {visible.length === 0 ? (
+              {historyQuery.isLoading ? (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-muted-foreground">Loading history…</td>
+                </tr>
+              ) : historyQuery.isError ? (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-muted-foreground">History is unavailable.</td>
+                </tr>
+              ) : visible.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-center text-muted-foreground">
                     No history items match the current filters.

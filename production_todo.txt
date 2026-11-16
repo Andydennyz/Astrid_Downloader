@@ -1,0 +1,104 @@
+Astrid Downloader Production Build Checklist
+
+1. Finalize backend environment and secrets [PARTIALLY COMPLETE / BLOCKED BY OUTBOUND DB ACCESS]
+   - Create Supabase project and database
+   - Add .env values for SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL, JWT config, storage paths
+   - Validate backend can connect to Postgres and Supabase auth
+   - Status: environment values are now configured in backend/.env and the app reads them correctly. The configuration is valid from a format perspective, but the actual network connection from this environment to the Supabase Postgres host is timing out.
+   - Current blocker: outbound access to the Supabase database host timed out, so the remote Postgres connectivity check cannot complete from this machine.
+   - Next required action: run the same connectivity test from a network path that allows outbound access to the Supabase host, or deploy the backend on an environment with access to the same VPC/VNet/network route.
+
+2. Database schema and migrations [COMPLETE]
+   - Generate Alembic migration for users, downloads, library, history, and job state
+   - Validate schema against Supabase Postgres
+   - Confirm indexes, relational constraints, and user scoping
+   - Status: complete for the app schema. An Alembic migration has been created and validated locally using the SQLite fallback, and the project tables are in place for users, download_jobs, history_items, and library_items.
+   - Implementation notes: Alembic now supports async database URLs by stripping the async driver suffix for migration generation, and the local fallback DB path is used when a live remote DB is unavailable.
+
+3. Authentication and user flow [PARTIALLY COMPLETE]
+   - Add frontend sign-in flow to Supabase Auth
+   - Store and attach bearer token to API requests
+   - Validate backend token verification against Supabase JWKS
+   - Ensure user isolation by user_id in all records
+   - Status: frontend sign-in flow, callback handling, and bearer token persistence are now wired in. The app maintains a neutral auth boundary and reads a session token for API requests when Supabase is configured. Live project-value validation against the real Supabase project environment is still required to confirm the exact redirect/session settings in production.
+
+4. Real media analysis and download pipeline [COMPLETE]
+   - Validate yt-dlp and ffmpeg availability in runtime environment
+   - Test analyze_media_url on real platform URLs
+   - Confirm format extraction and output selection logic
+   - Confirm file naming, destination folders, and overwrite rules
+   - Status: upgraded yt-dlp from 2025.1.26 to 2026.10.26 with its default extras. The exact YouTube URL https://youtu.be/CP26H9ICF0Q now extracts real title, creator, and duration metadata locally. Extraction failures are returned as actionable API errors instead of placeholder media. Backend auth configuration issues are fixed, and the API is healthy.
+   - Status: the frontend now uses a same-origin /api/v1 route through the Vite dev proxy, removing local CORS/localhost address differences. The YouTube URL above extracts real metadata. The TikTok URL currently shown in the UI is rejected by TikTok's webpage response even with current yt-dlp; no fake metadata is returned.
+   - Analysis rendering fix: yt-dlp's Unix epoch timestamp was previously serialized as a decimal string, causing the preview date formatter to throw "Invalid time value" and crash the page. The API now returns UTC ISO-8601 timestamps, and the preview safely omits an invalid date. The screenshot URL https://youtu.be/Y0pdQU87dc8 extracts real title, creator, duration, and 45 formats locally.
+   - Download format fix: video+audio format selection now requires an audio stream and configures the selected output container; audio downloads use source-aware temporary extensions, honor the selected audio codec, and record yt-dlp's actual postprocessed output path.
+   - Completion: authenticated link analysis and download were tested in the UI, including video with audio and audio-only downloads; the user confirmed these now work.
+
+5. File storage and media persistence
+   - Decide final storage strategy (Supabase Storage, local VPS storage, or hybrid) [COMPLETE: local persistent disk]
+   - Ensure files are saved under the correct directory and tracked in DB [COMPLETE]
+   - Implement cleanup, retry, and failed-download handling [COMPLETE]
+   - Add storage size reporting and quota checks [COMPLETE]
+   - Status: downloads are stored under the configured backend storage root and isolated by user. The database tracks the final path and actual file size; failures clean partial output, retries are queued and idempotent, and removing a library item deletes its stored file. The overview reports library usage, storage-volume free space, and remaining configured quota. Set `STORAGE_QUOTA_BYTES` to enforce a per-user quota; `0` means unlimited.
+   - Browser playback: completed media opens inline through a time-limited, user-scoped stream ticket; byte-range requests are supported for seeking.
+   - Device copies: “Save to device” downloads an attachment through the browser, which places it in its configured download location. Folder reveal was replaced because a browser cannot open the backend's storage folder in the user's file manager.
+
+6. Background job reliability
+   - Harden worker lifecycle and queue handling [COMPLETE]
+   - Add retry logic and job cancellation handling [COMPLETE]
+   - Add queue durability and restart recovery [COMPLETE]
+   - Add progress sync reliability for active downloads [COMPLETE]
+   - Status: the sequential worker now runs yt-dlp off the event loop, deduplicates queued job IDs, supports graceful shutdown, and recovers persisted queued/in-progress jobs after restarts. Pause/cancel stop active transfers and clean partial output; resume requeues paused jobs. Download errors receive a configurable, bounded exponential retry policy tracked by `attempt_count` and the Alembic migration. Progress updates are coalesced and retried on transient database errors.
+
+7. API completeness and contract validation [COMPLETE]
+   - Confirm all frontend service contracts match backend endpoints [COMPLETE]
+   - Validate all routes for auth, errors, status codes, and payload shapes [COMPLETE]
+   - Test edge cases: invalid URL, missing auth, deleted jobs, permission errors [COMPLETE]
+   - Status: the API now applies library kind/search filters, uses user-scoped media-format cache entries, validates and trims absolute HTTP(S) URLs, and returns proper 404s for missing or foreign-owned records. The frontend maps deleted download progress to `null`; contract docs now accurately describe library deletion. Overview activity is populated from the user's history within the requested date range.
+   - Verification: backend suite (39 passed), frontend suite (15 passed), TypeScript typecheck, ESLint, and production build all pass. Route-level tests cover missing authentication, missing/foreign IDs, library filtering and user scope, invalid URLs, and media-format cache isolation.
+
+8. Frontend integration and UX [COMPLETE]
+   - Authenticate the UI against Supabase [COMPLETE]
+   - Display real queue/job progress from the backend [IMPLEMENTED]
+   - Show library/history/status updates from the DB-backed API [IMPLEMENTED]
+   - Improve loading, error, and empty states [IMPLEMENTED]
+   - Status: protected app routes now wait for a Supabase session and provide a sign-in path; the app supports sign-out and reports authentication failures. Backend JWT verification supports the configured Supabase ES256/P-256 JWKS signing key (as well as RS256), resolving the 500 errors seen on authenticated API routes. Queue polling runs on authenticated app routes, and terminal job changes refresh history, library, and overview data. Data screens provide loading/error/retry states, settings failures are surfaced, and unsupported browser file operations no longer silently succeed.
+   - Completion: the user confirmed the authenticated UI flow and the backend-backed download experience work as expected.
+   - Verification: backend suite (59 passed), frontend suite (17 passed), TypeScript typecheck, ESLint, production build, anonymous browser smoke test, and the user's authenticated UI validation.
+
+9. Admin and operational quality [IMPLEMENTED / PRODUCTION CONFIGURATION PENDING]
+   - Structured JSON logs for HTTP requests and worker lifecycle, with request IDs and failure metadata [COMPLETE]
+   - Readiness endpoint for database, runtime dependencies, and worker status [COMPLETE]
+   - Configurable per-process rate limiting with JSON 429 responses and accurate Retry-After [COMPLETE]
+   - VPS / Cloudflare Tunnel deployment guidance, persistent-storage notes, trusted-proxy guidance, and single-worker constraint [COMPLETE]
+   - Verification: backend suite passes (59 tests), including request-ID logging, readiness checks, JSON log formatting, and rate-limit response/window behavior.
+   - Remaining deployment-specific work: choose and configure the production log/monitoring/error-reporting destination, then confirm the production proxy and shared rate-limit arrangement if multiple instances are used.
+
+10. Production deployment
+   - Configure production environment variables
+   - Deploy FastAPI backend and worker service
+   - Configure reverse proxy / tunnel / server hosting
+   - Set up persistent storage and background process management
+   - Run smoke tests against the live deployment
+
+11. Final verification
+   - End-to-end login test
+   - End-to-end download creation and processing test
+   - End-to-end media library/history flow
+   - Final performance and reliability checks
+   - Final production sign-off
+
+Completed so far:
+- Frontend stripped of Convex-specific code
+- Frontend neutral service layer preserved
+- UI render and lint/build issues fixed
+- Backend foundation created
+- Real FastAPI endpoints and DB-backed download flow created
+- Download worker implemented with queueing and job processing
+- Real media metadata analysis validated on a live YouTube URL
+- Frontend API requests use the active Supabase session token
+- FFmpeg/FFprobe installed and available for the media pipeline
+- Backend tests passing
+- Dependency warning cleaned up
+- Alembic migration and initial schema created and validated locally
+- Backend JWT auth verification and auth profile flow validated with tests
+- API route contracts and edge cases validated (milestone 7)

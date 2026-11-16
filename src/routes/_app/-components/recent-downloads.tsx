@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowRight, Copy, FolderOpen, MoreHorizontal, Play, RotateCcw, Trash2, Inbox } from "lucide-react";
+import { ArrowRight, Copy, Download, MoreHorizontal, Play, RotateCcw, Trash2, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { Panel, PanelHeader } from "@/components/layout.tsx";
 import MediaThumb from "@/components/media-thumb.tsx";
@@ -19,11 +20,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useDownloads } from "@/hooks/use-downloads.ts";
 import { useFileActions } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
+import { errorMessage } from "@/services/errors.ts";
 import { getServices, type HistoryEntry } from "@/services/index.ts";
 
 function QuickActions({ entry }: { entry: HistoryEntry }) {
   const files = useFileActions();
   const { start } = useDownloads();
+  const queryClient = useQueryClient();
   const { settings } = getServices();
 
   const redownload = async () => {
@@ -70,9 +73,9 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
         <DropdownMenuContent align="end" className="w-48">
           {path && (
             <>
-              <DropdownMenuItem onClick={() => void files.reveal(path)}>
-                <FolderOpen />
-                Reveal in folder
+              <DropdownMenuItem onClick={() => void files.saveToDevice(path)}>
+                <Download />
+                Save to this device
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => void files.copyPath(path)}>
                 <Copy />
@@ -97,7 +100,10 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
           <DropdownMenuItem
             variant="destructive"
             onClick={() => {
-              void getServices().history.remove(entry.id).then(() => toast.success("Removed from recent downloads"));
+              void getServices().history.remove(entry.id).then(async () => {
+                await queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
+                toast.success("Removed from recent downloads");
+              }).catch((error: unknown) => toast.error(errorMessage(error, "Could not remove this history item.")));
             }}
           >
             <Trash2 />

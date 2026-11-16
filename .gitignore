@@ -34,11 +34,12 @@ tsconfig.tsbuildinfo
 
 # Environment variables
 .env*
+.venv*
 
 # Cloudflare
 .wrangler
 
-# Hercules sandbox placeholders
+# Shell placeholders
 /.bash_profile
 /.bashrc
 /.gitconfig

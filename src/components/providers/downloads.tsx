@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ACTIVE_STATUSES,
@@ -9,33 +10,44 @@ import {
 import { errorMessage } from "@/services/errors.ts";
 import { getServices, type DownloadJob } from "@/services/index.ts";
 
-const SEED_NOTIFICATIONS: AppNotification[] = [
-  {
-    id: "n_seed_1",
-    kind: "completed",
-    title: "Download complete",
-    body: "Patagonia from Above — 4K Drone Film is ready.",
-    createdAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
-    read: false,
-  },
-  {
-    id: "n_seed_2",
-    kind: "failed",
-    title: "Download failed",
-    body: "Members-only Livestream Replay requires a channel membership.",
-    createdAt: new Date(Date.now() - 7 * 3_600_000).toISOString(),
-    read: true,
-  },
-];
+type StatusStream = {
+  start: () => void;
+  stop: () => void;
+};
+
+function createPollingStatusStream(refresh: () => Promise<void>, intervalMs = 2500): StatusStream {
+  let intervalId: number | undefined;
+
+  return {
+    start() {
+      void refresh();
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+      }
+      intervalId = window.setInterval(() => {
+        void refresh();
+      }, intervalMs);
+    },
+    stop() {
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+        intervalId = undefined;
+      }
+    },
+  };
+}
 
 /**
- * Holds the live download queue. It listens to the download service's event
- * stream, which a real backend would feed over WebSocket or SSE.
+ * Holds the live download queue and refreshes it from the authenticated backend.
  */
-export default function DownloadsProvider({ children }: { children: React.ReactNode }) {
+export default function DownloadsProvider({ children }: {
+  children: React.ReactNode;
+}) {
+  const queryClient = useQueryClient();
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState<AppNotification[]>(SEED_NOTIFICATIONS);
+  const [error, setError] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const lastStatus = useRef(new Map<string, DownloadJob["status"]>());
 
   const notify = useCallback((n: Omit<AppNotification, "id" | "createdAt" | "read">) => {
@@ -45,57 +57,61 @@ export default function DownloadsProvider({ children }: { children: React.ReactN
     ].slice(0, 30));
   }, []);
 
-  useEffect(() => {
+  const syncJobs = useCallback(async () => {
     const { downloads } = getServices();
-    let alive = true;
+    try {
+      const nextJobs = await downloads.list();
+      const nextStatus = new Map<string, DownloadJob["status"]>();
 
-    void downloads.list().then((initial) => {
-      if (!alive) return;
-      for (const job of initial) lastStatus.current.set(job.id, job.status);
-      setJobs(initial);
-      setLoading(false);
-    });
+      for (const job of nextJobs) {
+        const previous = lastStatus.current.get(job.id);
+        nextStatus.set(job.id, job.status);
 
-    const unsubscribe = downloads.subscribe((event) => {
-      if (event.type === "job.removed") {
-        lastStatus.current.delete(event.jobId);
-        setJobs((prev) => prev.filter((j) => j.id !== event.jobId));
-        return;
-      }
-      const { job } = event;
-      const previous = lastStatus.current.get(job.id);
-      lastStatus.current.set(job.id, job.status);
-      if (previous !== job.status) {
-        if (job.status === "completed") {
-          notify({ kind: "completed", title: "Download complete", body: `${job.request.title} is ready.` });
-          toast.success("Download complete", { description: job.request.title });
-        } else if (job.status === "failed") {
-          notify({ kind: "failed", title: "Download failed", body: `${job.request.title}: ${job.error ?? "Unknown error"}` });
-          toast.error("Download failed", { description: job.request.title });
+        if (previous !== job.status && previous !== undefined) {
+          if (["completed", "failed", "cancelled"].includes(job.status)) {
+            void queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
+            void queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
+            void queryClient.invalidateQueries({ queryKey: ["astrid", "overview"] });
+          }
+          if (job.status === "completed") {
+            notify({ kind: "completed", title: "Download complete", body: `${job.request.title} is ready.` });
+            toast.success("Download complete", { description: job.request.title });
+          } else if (job.status === "failed") {
+            notify({ kind: "failed", title: "Download failed", body: `${job.request.title}: ${job.error ?? "Unknown error"}` });
+            toast.error("Download failed", { description: job.request.title });
+          }
         }
       }
-      setJobs((prev) => {
-        const index = prev.findIndex((j) => j.id === job.id);
-        if (index === -1) return [job, ...prev];
-        const next = prev.slice();
-        next[index] = job;
-        return next;
-      });
-    });
 
-    return () => {
-      alive = false;
-      unsubscribe();
-    };
-  }, [notify]);
+      lastStatus.current = nextStatus;
+      setJobs(nextJobs);
+      setError(null);
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+      setError(errorMessage(error, "Could not refresh the download queue."));
+    }
+  }, [notify, queryClient]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const statusStream = createPollingStatusStream(async () => {
+      await syncJobs();
+    }, 2500);
+
+    statusStream.start();
+    return () => statusStream.stop();
+  }, [syncJobs]);
 
   const run = useCallback(async (action: () => Promise<unknown>, fallback: string) => {
     try {
       await action();
+      await syncJobs();
     } catch (error) {
       toast.error(errorMessage(error, fallback));
     }
-  }, []);
+  }, [syncJobs]);
 
   const value = useMemo<DownloadsContextValue>(() => {
     const { downloads } = getServices();
@@ -106,6 +122,8 @@ export default function DownloadsProvider({ children }: { children: React.ReactN
     return {
       jobs,
       loading,
+      error,
+      refresh: syncJobs,
       activeCount: active.length,
       aggregateProgress: total ? done / total : 0,
       aggregateSpeedBps: active.reduce((s, j) => s + (j.speedBps ?? 0), 0),
@@ -113,6 +131,7 @@ export default function DownloadsProvider({ children }: { children: React.ReactN
         try {
           const job = await downloads.start(request);
           notify({ kind: "info", title: "Added to queue", body: request.title });
+          await syncJobs();
           return job;
         } catch (error) {
           toast.error(errorMessage(error, "Could not start the download."));
@@ -130,7 +149,7 @@ export default function DownloadsProvider({ children }: { children: React.ReactN
       dismissNotification: (id) => setNotifications((prev) => prev.filter((n) => n.id !== id)),
       clearNotifications: () => setNotifications([]),
     };
-  }, [jobs, loading, notifications, notify, run]);
+  }, [error, jobs, loading, notifications, notify, run, syncJobs]);
 
   return <DownloadsContext value={value}>{children}</DownloadsContext>;
 }

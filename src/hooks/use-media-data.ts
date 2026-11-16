@@ -67,7 +67,14 @@ export function useFileActions() {
   };
   return {
     open: wrap(fileSystem.openFile, "Opening file", "Could not open the file."),
-    reveal: wrap(fileSystem.revealInFolder, "Revealed in folder", "Could not reveal the file."),
+    saveToDevice: async (path: string) => {
+      try {
+        await fileSystem.saveFileToDevice(path);
+        toast.success("Device download started", { description: "Check your browser's downloads." });
+      } catch (error) {
+        toast.error(errorMessage(error, "Could not save this media file."));
+      }
+    },
     copyPath: wrap(fileSystem.copyPath, "File path copied", "Could not copy the path."),
   };
 }
