@@ -14,6 +14,7 @@ import {
   ErrorStateTitle,
 } from "@/components/ui/error-state.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
+import { useAuth } from "@/hooks/use-auth.ts";
 import { useSettings } from "@/hooks/use-media-data.ts";
 import AnalyzingState from "./-components/new-download/analyzing-state.tsx";
 import DownloadComposer from "./-components/new-download/download-composer.tsx";
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/_app/new")({
   validateSearch: z.object({
     url: z.string().optional().catch(undefined),
   }),
-  head: () => ({ meta: [{ title: "New Download · Astrid Downloader" }] }),
+  head: () => ({ meta: [{ title: "New Download · MediaDock" }] }),
   component: NewDownloadPage,
 });
 
@@ -33,6 +34,7 @@ function NewDownloadPage() {
   const search = Route.useSearch();
   const [url, setUrl] = useState(search.url ?? "");
   const { state, analyze, reset } = useAnalyzer();
+  const { user } = useAuth();
   const settingsQuery = useSettings();
   const settings = settingsQuery.data;
   const autoRan = useRef(false);
@@ -52,8 +54,14 @@ function NewDownloadPage() {
   return (
     <PageContainer className="flex max-w-[1240px] flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h2 className="font-display text-2xl font-semibold tracking-tight text-balance">What would you like to download?</h2>
-        <p className="text-sm text-muted-foreground">Paste a link from YouTube, Vimeo, SoundCloud, Twitch, Bandcamp and more.</p>
+        <h2 className="font-display text-2xl font-semibold tracking-tight text-balance">
+          What would you like to download?
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {user
+            ? "Paste a public link supported by yt-dlp. MediaDock sign-in does not bypass platform logins, cookies, or DRM."
+            : "No sign-in needed for YouTube, Vimeo, SoundCloud, Twitch, Bandcamp, Facebook, Instagram, Pinterest, TikTok, X, Reddit, and Dailymotion. Sign in for other supported sites."}
+        </p>
       </div>
 
       <UrlBar
@@ -99,9 +107,17 @@ function NewDownloadPage() {
       )}
       {state.status === "ready" &&
         (settingsQuery.isError ? (
-          <DataLoadError error={settingsQuery.error} onRetry={() => void settingsQuery.refetch()} />
+          <DataLoadError
+            error={settingsQuery.error}
+            onRetry={() => void settingsQuery.refetch()}
+          />
         ) : settings ? (
-          <DownloadComposer key={state.info.id} info={state.info} settings={settings} onDone={clear} />
+          <DownloadComposer
+            key={state.info.id}
+            info={state.info}
+            settings={settings}
+            onDone={clear}
+          />
         ) : (
           <Skeleton className="h-96 rounded-2xl" />
         ))}

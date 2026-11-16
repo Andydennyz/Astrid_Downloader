@@ -44,7 +44,7 @@ export const COVERS = {
   spot: square("photo-1681149341674-45fd772fd463"),
 } as const;
 
-export const DEFAULT_ROOT = "~/Downloads/Astrid";
+export const DEFAULT_ROOT = "~/Downloads/MediaDock";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -68,7 +68,8 @@ function slug(title: string) {
 
 function toLibrary(seed: LibrarySeed, index: number): LibraryItem {
   const filename =
-    seed.filename ?? `${slug(seed.title)} [${seed.qualityLabel}].${seed.extension}`;
+    seed.filename ??
+    `${slug(seed.title)} [${seed.qualityLabel}].${seed.extension}`;
   const folder = seed.kind === "video" ? "Video" : "Audio";
   return {
     ...seed,
@@ -375,7 +376,10 @@ export function seedHistory(library: LibraryItem[]): HistoryEntry[] {
   );
 }
 
-type AnalyzerSample = Omit<MediaInfo, "id" | "sourceUrl" | "platform" | "formats"> & {
+type AnalyzerSample = Omit<
+  MediaInfo,
+  "id" | "sourceUrl" | "platform" | "formats"
+> & {
   kind: "video" | "audio";
   /** Source tops out at this height (video only). */
   maxHeight?: number;
@@ -444,11 +448,21 @@ export const AUDIO_STREAMS: Array<{
 ];
 
 export const PLATFORM_HOSTS: Array<{ platform: Platform; hosts: string[] }> = [
-  { platform: "youtube", hosts: ["youtube.com", "youtu.be", "music.youtube.com"] },
+  {
+    platform: "youtube",
+    hosts: ["youtube.com", "youtu.be", "music.youtube.com"],
+  },
   { platform: "vimeo", hosts: ["vimeo.com"] },
   { platform: "soundcloud", hosts: ["soundcloud.com"] },
   { platform: "twitch", hosts: ["twitch.tv"] },
   { platform: "bandcamp", hosts: ["bandcamp.com"] },
+  { platform: "facebook", hosts: ["facebook.com", "fb.watch"] },
+  { platform: "instagram", hosts: ["instagram.com", "instagr.am"] },
+  { platform: "pinterest", hosts: ["pinterest.com", "pin.it"] },
+  { platform: "tiktok", hosts: ["tiktok.com"] },
+  { platform: "x", hosts: ["twitter.com", "x.com"] },
+  { platform: "reddit", hosts: ["reddit.com", "redd.it"] },
+  { platform: "dailymotion", hosts: ["dailymotion.com", "dai.ly"] },
 ];
 
 /** Demo jobs that seed the queue so it is lively on first load. */

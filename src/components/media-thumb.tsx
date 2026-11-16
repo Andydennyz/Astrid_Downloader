@@ -33,6 +33,7 @@ export default function MediaThumb({ src, alt, kind, className, badge }: MediaTh
           src={src}
           alt={alt}
           loading="lazy"
+          decoding="async"
           onError={() => setFailed(true)}
           className="absolute inset-0 size-full object-cover"
         />

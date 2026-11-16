@@ -424,12 +424,30 @@ class DownloadWorker:
             if quality in {"2160p", "1440p", "1080p", "720p", "480p", "360p"}
             else ""
         )
+        width_filter = (
+            f"[width<={quality.removesuffix('p')}]"
+            if quality in {"2160p", "1440p", "1080p", "720p", "480p", "360p"}
+            else ""
+        )
+        if not height_filter:
+            return "bestvideo" if mode == "video" else "bestvideo+bestaudio/best"
         if mode == "video":
-            return f"bestvideo{height_filter}"
+            return (
+                f"bestvideo{height_filter}/bestvideo{width_filter}"
+                f"/best{height_filter}/best{width_filter}"
+            )
         if mode == "video+audio":
-            return f"bestvideo{height_filter}+bestaudio/best{height_filter}"
+            return (
+                f"bestvideo{height_filter}+bestaudio/"
+                f"bestvideo{width_filter}+bestaudio/"
+                f"best{height_filter}/best{width_filter}"
+            )
         if quality in {"2160p", "1440p", "1080p", "720p", "480p", "360p"}:
-            return f"bestvideo[height<={quality.removesuffix('p')}]+bestaudio/best[height<={quality.removesuffix('p')}]"
+            return (
+                f"bestvideo{height_filter}+bestaudio/"
+                f"bestvideo{width_filter}+bestaudio/"
+                f"best{height_filter}/best{width_filter}"
+            )
         return "bestvideo+bestaudio/best"
 
     async def _sync_progress(self, job_id: str, payload: dict[str, Any]) -> None:

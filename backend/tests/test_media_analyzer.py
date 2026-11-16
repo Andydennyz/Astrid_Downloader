@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import yt_dlp
 
-from app.services.media_analyzer import MediaAnalysisError, analyze_media_url
+from app.services.media_analyzer import MediaAnalysisError, analyze_media_url, detect_platform
 
 
 def test_analyze_media_url_returns_extracted_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -65,3 +65,50 @@ def test_analyze_media_url_surfaces_extractor_failure(monkeypatch: pytest.Monkey
 
     with pytest.raises(MediaAnalysisError, match="video unavailable"):
         analyze_media_url("https://youtu.be/unavailable")
+
+
+@pytest.mark.parametrize(
+    ("url", "expected_platform"),
+    [
+        ("https://www.facebook.com/watch/?v=123", "facebook"),
+        ("https://www.instagram.com/reel/abc123/", "instagram"),
+        ("https://pin.it/abc123", "pinterest"),
+        ("https://www.tiktok.com/@creator/video/123", "tiktok"),
+        ("https://x.com/creator/status/123", "x"),
+        ("https://notinstagram.com/reel/abc123/", "other"),
+    ],
+)
+def test_detect_platform_uses_host_boundaries(url: str, expected_platform: str) -> None:
+    assert detect_platform(url) == expected_platform
+
+
+def test_format_height_uses_short_edge_for_portrait_video() -> None:
+    from app.services.media_analyzer import _format_formats
+
+    formats = _format_formats(
+        {
+            "formats": [
+                {
+                    "format_id": "portrait",
+                    "width": 1080,
+                    "height": 1920,
+                    "vcodec": "av01",
+                    "acodec": "none",
+                }
+            ]
+        }
+    )
+
+    assert formats[0]["height"] == 1080
+
+
+def test_installed_yt_dlp_has_extractors_for_requested_social_sites() -> None:
+    from yt_dlp.extractor import gen_extractors
+
+    extractors = [extractor for extractor in gen_extractors() if extractor.IE_NAME != "generic"]
+    for url in (
+        "https://www.facebook.com/watch/?v=123456789",
+        "https://www.instagram.com/reel/abc123/",
+        "https://www.pinterest.com/pin/123456789/",
+    ):
+        assert any(extractor.suitable(url) for extractor in extractors), url

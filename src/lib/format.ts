@@ -58,5 +58,12 @@ export const PLATFORM_LABEL: Record<Platform, string> = {
   soundcloud: "SoundCloud",
   twitch: "Twitch",
   bandcamp: "Bandcamp",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  pinterest: "Pinterest",
+  tiktok: "TikTok",
+  x: "X",
+  reddit: "Reddit",
+  dailymotion: "Dailymotion",
   other: "Web",
 };

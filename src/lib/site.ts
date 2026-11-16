@@ -7,7 +7,7 @@ type Site = {
 };
 
 export const site: Site = {
-  name: "Astrid Downloader",
+  name: "MediaDock",
   tagline:
     "A premium desktop download manager for video and audio. Analyze links, pick exact formats and manage your media library.",
   nav: [{ label: "Overview", to: "/" }],

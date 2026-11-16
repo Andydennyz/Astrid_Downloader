@@ -53,10 +53,69 @@ def test_video_plus_audio_selection_requires_audio_and_uses_the_selected_contain
     )
     worker = DownloadWorker()
 
-    assert worker._pick_format(job) == "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
+    assert worker._pick_format(job) == (
+        "bestvideo[height<=1080]+bestaudio/"
+        "bestvideo[width<=1080]+bestaudio/"
+        "best[height<=1080]/best[width<=1080]"
+    )
     output_path = worker._build_output_path(job)
     assert output_path.suffix == ".%(ext)s"
     assert worker._final_output_path(output_path, job).suffix == ".webm"
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_format"),
+    [
+        ("video", "portrait-video"),
+        ("video+audio", "portrait-video+audio"),
+    ],
+)
+def test_video_format_selection_accepts_portrait_video(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    expected_format: str,
+) -> None:
+    monkeypatch.setattr("app.services.storage.settings.storage_path", str(tmp_path))
+    job = DownloadJob(
+        id="job-portrait",
+        user_id="user-1",
+        title="Portrait reel",
+        filename=None,
+        destination="~/Downloads",
+        kind="video",
+        extension="mp4",
+        selection_json=json.dumps(
+            {"mode": mode, "videoQuality": "1080p", "container": "mp4"}
+        ),
+    )
+    formats = [
+        {
+            "format_id": "portrait-video",
+            "ext": "mp4",
+            "url": "https://example.com/video",
+            "width": 1080,
+            "height": 1920,
+            "vcodec": "av01",
+            "acodec": "none",
+        },
+        {
+            "format_id": "audio",
+            "ext": "m4a",
+            "url": "https://example.com/audio",
+            "vcodec": "none",
+            "acodec": "mp4a",
+        },
+    ]
+
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        selected = list(
+            ydl.build_format_selector(DownloadWorker()._pick_format(job))(
+                {"formats": formats, "incomplete": True}
+            )
+        )
+
+    assert selected[0]["format_id"] == expected_format
 
 
 @pytest.mark.parametrize("audio_format", ["m4a", "mp3", "wav", "flac"])

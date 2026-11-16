@@ -30,7 +30,7 @@ export const Route = createRootRouteWithContext<{
       { name: "description", content: site.tagline },
     ],
     links: [
-      { rel: "icon", href: "/favicon.ico" },
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "stylesheet", href: appCss },
     ],
   }),

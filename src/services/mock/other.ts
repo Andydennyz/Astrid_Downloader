@@ -90,8 +90,8 @@ export function createMockStatsService(): StatsService {
 }
 
 const PICKER_FOLDERS = [
-  "~/Movies/Astrid",
-  "~/Music/Astrid",
+  "~/Movies/MediaDock",
+  "~/Music/MediaDock",
   "~/Desktop",
   "/Volumes/Media/Downloads",
   DEFAULT_ROOT,

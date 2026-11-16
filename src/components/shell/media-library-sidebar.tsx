@@ -122,7 +122,7 @@ export default function MediaLibrarySidebar({ open, onToggle }: { open: boolean;
                 )}
               >
                 <div className="flex items-start gap-2.5">
-                  <img src={item.thumbnailUrl} alt={item.title} className="media-library-thumb h-12 w-16 rounded-lg object-cover" />
+                  <img src={item.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" className="media-library-thumb h-12 w-16 rounded-lg object-cover" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12px] font-semibold leading-tight">{item.title}</div>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{item.creator}</div>
@@ -141,7 +141,7 @@ export default function MediaLibrarySidebar({ open, onToggle }: { open: boolean;
         {selected && (
           <div className="border-t border-sidebar-border bg-sidebar-accent/30 p-3">
             <div className="flex items-start gap-3">
-              <img src={selected.thumbnailUrl} alt={selected.title} className="h-14 w-20 rounded-lg object-cover" />
+              <img src={selected.thumbnailUrl} alt={selected.title} loading="lazy" decoding="async" className="h-14 w-20 rounded-lg object-cover" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold">{selected.title}</div>
                 <div className="mt-1 text-[10px] text-sidebar-foreground/65">{selected.creator}</div>

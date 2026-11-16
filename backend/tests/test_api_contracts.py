@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterator
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api import media as media_api
-from app.core.security import AuthUser, get_current_user
+from app.core.security import AuthUser, get_current_user_or_guest
 from app.database.base import Base
 from app.database.connection import get_db
 from app.database.models import DownloadJob, HistoryItem, LibraryItem, User
@@ -33,7 +34,7 @@ def api_client(tmp_path: Path) -> Iterator[tuple[TestClient, async_sessionmaker,
         async with sessions() as session:
             yield session
 
-    app.dependency_overrides[get_current_user] = override_current_user
+    app.dependency_overrides[get_current_user_or_guest] = override_current_user
     app.dependency_overrides[get_db] = override_get_db
     try:
         yield TestClient(app), sessions, auth
@@ -48,14 +49,114 @@ async def _create_schema(engine) -> None:
         await connection.run_sync(Base.metadata.create_all)
 
 
-def test_routes_require_authentication(api_client) -> None:
+def test_routes_require_a_bearer_or_guest_token(api_client) -> None:
     client, _, _ = api_client
-    app.dependency_overrides.pop(get_current_user)
+    app.dependency_overrides.pop(get_current_user_or_guest)
 
     response = client.get("/api/v1/downloads")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Missing bearer token."
+    assert response.json()["detail"] == "A bearer token or guest token is required."
+
+
+def test_guest_can_download_and_only_access_jobs_from_its_browser(
+    api_client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, _ = api_client
+    app.dependency_overrides.pop(get_current_user_or_guest)
+    guest_token = str(uuid4())
+    monkeypatch.setattr(media_api.settings, "storage_path", str(tmp_path / "storage"))
+    monkeypatch.setattr(media_api.settings, "storage_quota_bytes", 0)
+
+    async def skip_queue(job_id: str) -> None:
+        return None
+
+    monkeypatch.setattr(media_api, "queue_download_job", skip_queue)
+    payload = {
+        "sourceUrl": "https://www.youtube.com/watch?v=guest-video",
+        "title": "Guest download",
+        "creator": "Creator",
+        "thumbnailUrl": "",
+        "durationSec": 10,
+        "destination": "",
+        "selection": {"mode": "video"},
+    }
+
+    response = client.post(
+        "/api/v1/downloads",
+        headers={"X-Guest-Token": guest_token},
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    job_id = response.json()["id"]
+    own_jobs = client.get(
+        "/api/v1/downloads",
+        headers={"X-Guest-Token": guest_token},
+    )
+    other_jobs = client.get(
+        "/api/v1/downloads",
+        headers={"X-Guest-Token": str(uuid4())},
+    )
+    assert [job["id"] for job in own_jobs.json()] == [job_id]
+    assert other_jobs.json() == []
+
+
+def test_guest_download_rejects_unsupported_source_hosts(api_client) -> None:
+    client, _, _ = api_client
+    app.dependency_overrides.pop(get_current_user_or_guest)
+    payload = {
+        "sourceUrl": "https://example.com/media",
+        "title": "External URL",
+        "creator": "Creator",
+        "thumbnailUrl": "",
+        "durationSec": 10,
+        "destination": "",
+        "selection": {"mode": "video"},
+    }
+
+    response = client.post(
+        "/api/v1/downloads",
+        headers={"X-Guest-Token": str(uuid4())},
+        json=payload,
+    )
+
+    assert response.status_code == 403
+    assert "Guest downloads support" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.facebook.com/watch/?v=123456789",
+        "https://fb.watch/abc123/",
+        "https://www.instagram.com/reel/abc123/",
+        "https://www.pinterest.com/pin/123456789/",
+        "https://pin.it/abc123",
+        "https://www.tiktok.com/@creator/video/123456789",
+        "https://x.com/creator/status/123456789",
+        "https://www.reddit.com/r/videos/comments/abc123/",
+        "https://www.dailymotion.com/video/x123abc",
+    ],
+)
+def test_guest_download_accepts_common_social_site_hosts(url: str) -> None:
+    media_api._validate_guest_media_url(
+        AuthUser(user_id="guest-test", role="guest"),
+        url,
+    )
+
+
+def test_guest_route_rejects_malformed_guest_token(api_client) -> None:
+    client, _, _ = api_client
+    app.dependency_overrides.pop(get_current_user_or_guest)
+
+    response = client.get(
+        "/api/v1/downloads",
+        headers={"X-Guest-Token": "not-a-uuid"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Guest token is invalid."
 
 
 def test_missing_and_foreign_items_return_not_found(api_client) -> None:

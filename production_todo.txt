@@ -65,13 +65,14 @@ Astrid Downloader Production Build Checklist
    - Completion: the user confirmed the authenticated UI flow and the backend-backed download experience work as expected.
    - Verification: backend suite (59 passed), frontend suite (17 passed), TypeScript typecheck, ESLint, production build, anonymous browser smoke test, and the user's authenticated UI validation.
 
-9. Admin and operational quality [IMPLEMENTED / PRODUCTION CONFIGURATION PENDING]
+9. Admin and operational quality [COMPLETE]
    - Structured JSON logs for HTTP requests and worker lifecycle, with request IDs and failure metadata [COMPLETE]
    - Readiness endpoint for database, runtime dependencies, and worker status [COMPLETE]
    - Configurable per-process rate limiting with JSON 429 responses and accurate Retry-After [COMPLETE]
-   - VPS / Cloudflare Tunnel deployment guidance, persistent-storage notes, trusted-proxy guidance, and single-worker constraint [COMPLETE]
+   - Single-instance VPS / Cloudflare Tunnel deployment guidance, persistent-storage notes, trusted-proxy configuration, stdout log collection/retention/alert guidance, and single-worker constraint [COMPLETE]
    - Verification: backend suite passes (59 tests), including request-ID logging, readiness checks, JSON log formatting, and rate-limit response/window behavior.
-   - Remaining deployment-specific work: choose and configure the production log/monitoring/error-reporting destination, then confirm the production proxy and shared rate-limit arrangement if multiple instances are used.
+   - Production decisions: use the hosting platform's stdout log service and one API instance behind its trusted proxy/tunnel. No shared limiter or separate monitoring vendor is needed for this deployment topology.
+   - Production log collection and proxy allowlisting must be activated on the chosen host during milestone 10; do not expose the backend port directly to untrusted clients.
 
 10. Production deployment
    - Configure production environment variables

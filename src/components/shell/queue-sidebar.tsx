@@ -96,7 +96,7 @@ function QueueItem({
     >
       <div className="flex items-start gap-2.5">
         <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
-          <img src={job.request.thumbnailUrl} alt={job.request.title} className="h-full w-full object-cover" />
+          <img src={job.request.thumbnailUrl} alt={job.request.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
           <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-1.5 py-0.5 text-[8px] text-white">
             <span>{job.qualityLabel}</span>
             <span>{job.extension.toUpperCase()}</span>
@@ -333,7 +333,7 @@ export default function QueueSidebar({ open, onToggle }: { open: boolean; onTogg
         {selectedJob && (
           <div className="border-t border-sidebar-border bg-sidebar-accent/30 p-3">
             <div className="flex items-start gap-3">
-              <img src={selectedJob.request.thumbnailUrl} alt={selectedJob.request.title} className="h-14 w-20 rounded-lg object-cover" />
+              <img src={selectedJob.request.thumbnailUrl} alt={selectedJob.request.title} loading="lazy" decoding="async" className="h-14 w-20 rounded-lg object-cover" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <div className="truncate text-sm font-semibold">{selectedJob.request.title}</div>

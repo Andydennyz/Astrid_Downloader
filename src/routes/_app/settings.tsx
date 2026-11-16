@@ -10,7 +10,7 @@ import { errorMessage } from "@/services/errors.ts";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/settings")({
-  head: () => ({ meta: [{ title: "Settings · Astrid Downloader" }] }),
+  head: () => ({ meta: [{ title: "Settings · MediaDock" }] }),
   component: Page,
 });
 
@@ -132,7 +132,7 @@ function Page() {
             <SettingsRow label="Auto-organize by creator" hint="Group media into creator folders when available.">
               <Switch checked={settings.general.organizeByCreator} onCheckedChange={(checked) => void update((current) => ({ ...current, general: { ...current.general, organizeByCreator: Boolean(checked) } }))} />
             </SettingsRow>
-            <SettingsRow label="Launch at startup" hint="Open Astrid when your computer starts.">
+            <SettingsRow label="Launch at startup" hint="Open MediaDock when your computer starts.">
               <Switch checked={settings.general.launchAtStartup} onCheckedChange={(checked) => void update((current) => ({ ...current, general: { ...current.general, launchAtStartup: Boolean(checked) } }))} />
             </SettingsRow>
             <SettingsRow label="Start minimized" hint="Open in the tray instead of the full window.">

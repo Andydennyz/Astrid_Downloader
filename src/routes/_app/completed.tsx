@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, Grid2x2, List, Search, Trash2 } from "lucide-react";
+import { Copy, Download, FolderOpen, Grid2x2, List, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer, Panel } from "@/components/layout.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
@@ -13,7 +13,7 @@ import { errorMessage } from "@/services/errors.ts";
 import { getServices, type LibraryItem } from "@/services/index.ts";
 
 export const Route = createFileRoute("/_app/completed")({
-  head: () => ({ meta: [{ title: "Completed Downloads · Astrid Downloader" }] }),
+  head: () => ({ meta: [{ title: "Completed Downloads · MediaDock" }] }),
   component: Page,
 });
 
@@ -30,7 +30,7 @@ function LibraryCard({ item, onOpen, onSave, onCopy, onRemove }: {
   return (
     <div className="group overflow-hidden rounded-2xl border border-border bg-card/70">
       <div className="relative h-48 overflow-hidden">
-        <img src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        <img src={item.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
         <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/50 to-transparent px-3 py-2 text-[10px] text-white">
           <span className="rounded-full bg-black/25 px-2 py-0.5 backdrop-blur-sm">{item.kind === "video" ? "Video" : "Audio"}</span>
           <span>{item.qualityLabel}</span>
@@ -50,6 +50,17 @@ function LibraryCard({ item, onOpen, onSave, onCopy, onRemove }: {
         <div className="flex flex-wrap gap-2 pt-1">
           <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => onOpen(item.filePath)}>
             Open
+          </Button>
+          <Button
+            type="button"
+            nativeButton={false}
+            render={<Link to={item.kind === "video" ? "/video" : "/audio"} />}
+            variant="ghost"
+            size="sm"
+            className="gap-1.5"
+          >
+            <FolderOpen className="size-3.5" />
+            {item.kind === "video" ? "Video library" : "Audio library"}
           </Button>
           <Button type="button" variant="ghost" size="icon-sm" onClick={() => onSave(item.filePath)} aria-label={`Save ${item.title} to this device`}>
             <Download className="size-3.5" />
@@ -190,7 +201,7 @@ function Page() {
           <div className="space-y-2 px-5 pb-5">
             {visible.map((item) => (
               <div key={item.id} className="flex items-center gap-3 rounded-2xl border border-border bg-card/60 p-3">
-                <img src={item.thumbnailUrl} alt={item.title} className="h-16 w-16 rounded-xl object-cover" />
+                <img src={item.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" className="h-16 w-16 rounded-xl object-cover" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -204,6 +215,17 @@ function Page() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    nativeButton={false}
+                    render={<Link to={item.kind === "video" ? "/video" : "/audio"} />}
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Open ${item.kind} library`}
+                    title={`Open ${item.kind} library`}
+                  >
+                    <FolderOpen className="size-3.5" />
+                  </Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => open(item.filePath)}>
                     Open
                   </Button>

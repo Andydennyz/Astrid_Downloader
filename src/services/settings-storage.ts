@@ -6,7 +6,7 @@ export const SETTINGS_STORAGE_KEY = "astrid.settings.v1";
 
 export const DEFAULT_SETTINGS: AppSettings = {
   general: {
-    downloadLocation: "~/Downloads/Astrid",
+    downloadLocation: "~/Downloads/MediaDock",
     defaultVideoQuality: "1080p",
     defaultAudioFormat: "mp3",
     defaultContainer: "mp4",
@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     retryAttempts: 3,
   },
   appearance: {
-    accent: "violet",
+    accent: "cyan",
     density: "comfortable",
   },
   advanced: {
@@ -43,12 +43,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Merge stored values over defaults so new settings keys get sane values. */
-function mergeSection<T extends Record<string, unknown>>(base: T, stored: unknown): T {
+function mergeSection<T extends Record<string, unknown>>(
+  base: T,
+  stored: unknown,
+): T {
   if (!isRecord(stored)) return base;
   const out: Record<string, unknown> = { ...base };
   for (const key of Object.keys(base)) {
     const value = stored[key];
-    if (value !== undefined && typeof value === typeof base[key]) out[key] = value;
+    if (value !== undefined && typeof value === typeof base[key])
+      out[key] = value;
   }
   // Every key was type-checked against the defaults above.
   return out as T;
@@ -61,12 +65,17 @@ export function loadSettings(): AppSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return DEFAULT_SETTINGS;
-    return {
+    const settings = {
       general: mergeSection(DEFAULT_SETTINGS.general, parsed.general),
       downloads: mergeSection(DEFAULT_SETTINGS.downloads, parsed.downloads),
       appearance: mergeSection(DEFAULT_SETTINGS.appearance, parsed.appearance),
       advanced: mergeSection(DEFAULT_SETTINGS.advanced, parsed.advanced),
     };
+    if (settings.general.downloadLocation === "~/Downloads/Astrid") {
+      settings.general.downloadLocation =
+        DEFAULT_SETTINGS.general.downloadLocation;
+    }
+    return settings;
   } catch {
     return DEFAULT_SETTINGS;
   }

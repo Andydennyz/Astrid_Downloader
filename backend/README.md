@@ -3,6 +3,7 @@
 This directory contains the Python FastAPI backend for Astrid Downloader.
 
 ## Stack
+
 - FastAPI
 - Supabase PostgreSQL
 - SQLAlchemy 2.0
@@ -40,15 +41,22 @@ cross-origin requests. Set `VITE_API_BASE_URL` in the repository-root `.env` onl
 deployment uses a different API route.
 Frontend authentication is configured separately: copy the repository-root `.env.example`
 to `.env`, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (or
-`VITE_SUPABASE_ANON_KEY`), then restart Vite and sign in before analyzing links. The
-media API requires a Supabase bearer token.
+`VITE_SUPABASE_ANON_KEY`), then restart Vite to enable optional account sign-in. Guests can
+analyze and download without signing in; the browser sends a random guest token and the API
+keeps that guest's queue, history, and files separate. Guest data is available only in the
+same browser profile. Signing in switches to the account's data; signing out returns to the
+guest data. Guest media links include YouTube, Vimeo, SoundCloud, Twitch, Bandcamp,
+Facebook, Instagram, Pinterest, TikTok, X, Reddit, and Dailymotion. Signed-in users can
+use any site supported by yt-dlp. Links requiring platform login, cookies, or DRM are not
+supported; signing in to MediaDock does not bypass site access controls.
 
 Downloaded files are stored on the backend host under `STORAGE_PATH`, partitioned by
-authenticated user. Relative destinations (including the default `~/Downloads/Astrid`)
-are treated as folders inside that managed root; absolute destinations must also be
-inside it. Set `STORAGE_QUOTA_BYTES` to a positive byte count to enforce a per-user
-library quota, or leave it at `0` for no configured quota. The overview API reports
-library usage, remaining quota, and free space on the storage volume.
+account or guest identity. Relative destinations (including the default
+`~/Downloads/MediaDock`) are treated as folders inside that managed root; absolute
+destinations must also be inside it. Set `STORAGE_QUOTA_BYTES` to a positive byte count
+to enforce a per-user library quota, or leave it at `0` for no configured quota. The
+overview API reports library usage, remaining quota, and free space on the storage
+volume.
 
 ## Background downloads
 
@@ -61,26 +69,42 @@ Transient download failures receive bounded automatic retries before being marke
 failed. `DOWNLOAD_MAX_RETRIES` counts retries after the first attempt (default `2`),
 and `DOWNLOAD_RETRY_BACKOFF_SECONDS` sets the exponential backoff base (default `1`).
 
+## yt-dlp updates
+
+The backend uses the pinned `yt-dlp[default]` version in `requirements.txt`. Dependabot
+checks weekly and opens an update pull request for yt-dlp only. Backend tests, including
+extractor checks for Facebook, Instagram, and Pinterest, run on the pull request; review
+and merge it only after they pass. The running backend does not install package updates
+on its own.
+
 ## Production deployment and operations
 
 Run behind a TLS-terminating reverse proxy or Cloudflare Tunnel, and keep the backend
 port private. The API process also hosts the sequential download worker, so run one
-Uvicorn worker (`--workers 1`) unless the worker and queue are moved to a separate
-service. The in-memory rate limiter is also per process; use an edge/shared rate
-limiter if deploying multiple instances.
+Uvicorn process with one worker (`--workers 1`). This single-instance deployment is
+the supported rate-limit topology: the in-memory sliding-window limiter keys requests
+by the client address Uvicorn exposes and returns `429` with a `Retry-After` header.
+`MAX_RATE_REQUESTS_PER_MINUTE` defaults to `120`. If you later deploy multiple API
+instances, move rate limiting to the edge or a shared store before scaling out.
 
-For a reverse proxy, enable Uvicorn proxy headers only for the proxy addresses you
-trust. Do not trust forwarded client IP headers from arbitrary internet clients.
-Configure `MAX_RATE_REQUESTS_PER_MINUTE` to tune the per-process API limit.
+When using a reverse proxy, configure Uvicorn to trust proxy headers only from the
+proxy's actual peer address(es), for example with `--proxy-headers` and
+`--forwarded-allow-ips=<trusted-proxy-addresses>`. The backend port must not be
+reachable directly from untrusted clients; never trust forwarded client IP headers
+from arbitrary internet clients. With Cloudflare Tunnel, use the address from which
+the tunnel connector reaches the backend.
 
 Persist and back up the directory configured by `STORAGE_PATH`; it contains both media
 and, when using the local database, the SQLite database. Use `/api/v1/health` as a
 liveness probe and `/api/v1/health/ready` as a readiness probe. The backend emits
 newline-delimited JSON logs to stdout, including request IDs, request timing, rate-limit
-events, and download-worker state changes. Forward stdout to the hosting platform's
-log service and configure a production alert/error-reporting destination there.
+events, readiness failures, and download-worker state changes. Collect stdout with the
+hosting platform's log service, set appropriate retention, and alert on error-level
+events such as `http.request.failed` and `download.job.failed`. No separate monitoring
+vendor is required for this setup.
 
 ## Notes
+
 - Do not commit `.env` files.
 - The frontend is intentionally kept backend-agnostic; this backend exposes the API layer for the existing contracts.
 - Supabase Auth JWTs are validated using the Supabase JWKS endpoint, including RSA/RS256

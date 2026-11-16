@@ -9,7 +9,7 @@ import { useFileActions, useLibrary } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
 
 export const Route = createFileRoute("/_app/video")({
-  head: () => ({ meta: [{ title: "Video Downloads · Astrid Downloader" }] }),
+  head: () => ({ meta: [{ title: "Video Downloads · MediaDock" }] }),
   component: Page,
 });
 
@@ -88,7 +88,7 @@ function Page() {
             {visible.map((item) => (
               <div key={item.id} className="overflow-hidden rounded-2xl border border-border bg-card/60">
                 <div className="relative h-52 overflow-hidden">
-                  <img src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
+                  <img src={item.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-3 py-2 text-[10px] text-white">
                     <span>{item.qualityLabel}</span>
                     <span>{formatDuration(item.durationSec)}</span>

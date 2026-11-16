@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { getSupabaseSession } = vi.hoisted(() => ({
+const { getSupabaseSession, getGuestToken } = vi.hoisted(() => ({
   getSupabaseSession: vi.fn(),
+  getGuestToken: vi.fn(),
 }));
 
 vi.mock("../lib/supabase.ts", () => ({ getSupabaseSession }));
+vi.mock("../lib/guest.ts", () => ({ getGuestToken }));
 
 import { createHttpServices } from "./http.ts";
 
@@ -12,7 +14,72 @@ describe("HTTP service authentication", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+  });
+
+  it.each([
+    ["https://www.facebook.com/watch/?v=123", "facebook"],
+    ["https://www.instagram.com/reel/abc123/", "instagram"],
+    ["https://pin.it/abc123", "pinterest"],
+  ] as const)("recognizes %s as a supported platform", (url, platform) => {
+    expect(createHttpServices().media.validateUrl(url)).toEqual({
+      valid: true,
+      platform,
+    });
+  });
+
+  it("uses a guest token when there is no signed-in session", async () => {
+    getSupabaseSession.mockResolvedValue(null);
+    getGuestToken.mockReturnValue("guest-token");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "media-1",
+          sourceUrl: "https://example.com/media",
+          platform: "other",
+          title: "Test media",
+          creator: "Test creator",
+          durationSec: 30,
+          thumbnailUrl: "",
+          uploadedAt: "2026-01-01T00:00:00Z",
+          formats: [],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHttpServices().media.analyze("https://example.com/media");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/media/analyze",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "X-Guest-Token": "guest-token" }),
+      }),
+    );
+  });
+
+  it("offers sign-in when a guest link is not supported", async () => {
+    getSupabaseSession.mockResolvedValue(null);
+    getGuestToken.mockReturnValue("guest-token");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ detail: "Sign in to use other supported sites." }),
+            { status: 403, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+    );
+
+    await expect(
+      createHttpServices().media.analyze("https://example.com/media"),
+    ).rejects.toMatchObject({
+      code: "INVALID_STATE",
+      message: "Sign in to use other supported sites.",
+    });
   });
 
   it("uses the same-origin proxy for the local backend during development", async () => {
@@ -78,7 +145,7 @@ describe("HTTP service authentication", () => {
     );
   });
 
-  it("explains that the user needs to sign in when the API rejects a missing session", async () => {
+  it("explains how to recover when the API rejects a missing session", async () => {
     getSupabaseSession.mockResolvedValue(null);
     vi.stubGlobal(
       "fetch",
@@ -93,13 +160,16 @@ describe("HTTP service authentication", () => {
     await expect(
       createHttpServices().media.analyze("https://example.com/media"),
     ).rejects.toThrow(
-      "Your sign-in session is missing or expired. Sign in, then try again.",
+      "Your session is missing or expired. Refresh the page or sign in again.",
     );
   });
 
   it("explains how to recover when the backend cannot be reached", async () => {
     getSupabaseSession.mockResolvedValue(null);
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    );
 
     await expect(
       createHttpServices().media.analyze("https://example.com/media"),
@@ -120,7 +190,9 @@ describe("HTTP service authentication", () => {
       ),
     );
 
-    await expect(createHttpServices().downloads.getProgress("deleted-job")).resolves.toBeNull();
+    await expect(
+      createHttpServices().downloads.getProgress("deleted-job"),
+    ).resolves.toBeNull();
   });
 
   it("preserves validation errors as invalid-URL service errors", async () => {
@@ -128,14 +200,21 @@ describe("HTTP service authentication", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ detail: "A valid absolute HTTP or HTTPS media URL is required." }), {
-          status: 422,
-          headers: { "Content-Type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            detail: "A valid absolute HTTP or HTTPS media URL is required.",
+          }),
+          {
+            status: 422,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
       ),
     );
 
-    await expect(createHttpServices().media.analyze("ftp://example.com/media")).rejects.toMatchObject({
+    await expect(
+      createHttpServices().media.analyze("ftp://example.com/media"),
+    ).rejects.toMatchObject({
       code: "INVALID_URL",
     });
   });
@@ -166,7 +245,9 @@ describe("HTTP service authentication", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ path }),
-        headers: expect.objectContaining({ Authorization: "Bearer test-access-token" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-access-token",
+        }),
       }),
     );
     expect(replace).toHaveBeenCalledWith("/api/v1/files/open/signed-ticket");
@@ -175,10 +256,15 @@ describe("HTTP service authentication", () => {
 
   it("downloads a backend-stored media file to the device using an authenticated ticket", async () => {
     getSupabaseSession.mockResolvedValue({ access_token: "test-access-token" });
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {
-      const link = document.querySelector<HTMLAnchorElement>('a[download=""]');
-      expect(link?.href).toBe(`${window.location.origin}/api/v1/files/open/download-ticket`);
-    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {
+        const link =
+          document.querySelector<HTMLAnchorElement>('a[download=""]');
+        expect(link?.href).toBe(
+          `${window.location.origin}/api/v1/files/open/download-ticket`,
+        );
+      });
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ticket: "download-ticket" }), {
         status: 200,
@@ -195,7 +281,9 @@ describe("HTTP service authentication", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ path }),
-        headers: expect.objectContaining({ Authorization: "Bearer test-access-token" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-access-token",
+        }),
       }),
     );
     expect(click).toHaveBeenCalledOnce();

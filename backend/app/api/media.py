@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -10,7 +11,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import AuthUser, get_current_user
+from app.core.security import AuthUser, get_current_user_or_guest
 from app.core.config import settings
 from app.database.connection import get_db
 from app.database.models import DownloadJob, HistoryItem, LibraryItem
@@ -18,12 +19,69 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.media import DownloadJobResponse, DownloadRequestSchema, FileOpenSessionRequest, MediaAnalyzeRequest, MediaInfoResponse
 from app.services.downloader import queue_download_job, stop_download_job
 from app.services.file_access import create_file_access_ticket, read_file_access_ticket
-from app.services.media_analyzer import MediaAnalysisError, analyze_media_url
+from app.services.media_analyzer import (
+    MediaAnalysisError,
+    analyze_media_url,
+    detect_platform,
+)
 from app.services.storage import StorageError, resolve_destination, storage_disk_free_bytes, user_storage_root
 
 router = APIRouter(tags=["media"])
 
 _MEDIA_CACHE: dict[tuple[str, str], dict] = {}
+_GUEST_MEDIA_DOMAINS = (
+    "youtube.com",
+    "youtu.be",
+    "vimeo.com",
+    "soundcloud.com",
+    "twitch.tv",
+    "bandcamp.com",
+    "facebook.com",
+    "fb.watch",
+    "instagram.com",
+    "instagr.am",
+    "pinterest.com",
+    "pin.it",
+    "tiktok.com",
+    "twitter.com",
+    "x.com",
+    "reddit.com",
+    "redd.it",
+    "dailymotion.com",
+    "dai.ly",
+)
+
+
+def _validate_guest_media_url(current_user: AuthUser, url: str) -> None:
+    if current_user.role != "guest":
+        return
+
+    try:
+        parsed = urlsplit(url)
+        hostname = (parsed.hostname or "").rstrip(".").lower()
+        port = parsed.port
+    except ValueError:
+        hostname = ""
+        port = None
+        parsed = None
+    is_supported = any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in _GUEST_MEDIA_DOMAINS
+    )
+    if (
+        parsed is None
+        or parsed.scheme not in {"http", "https"}
+        or (port is not None and port not in {80, 443})
+        or not is_supported
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Guest downloads support public YouTube, Vimeo, SoundCloud, Twitch, "
+                "Bandcamp, Facebook, Instagram, Pinterest, TikTok, X, Reddit, and "
+                "Dailymotion links. Sign in to use other supported sites."
+            ),
+        )
 
 
 def _serialize_download(job: DownloadJob) -> dict:
@@ -114,12 +172,12 @@ async def validate_media_url(url: str = Query(..., min_length=1)) -> dict:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
-    platform = "youtube" if "youtube.com" in url.lower() or "youtu.be" in url.lower() else "other"
-    return {"valid": True, "platform": platform}
+    return {"valid": True, "platform": detect_platform(url)}
 
 
 @router.post("/media/analyze", response_model=MediaInfoResponse)
-async def analyze_media(payload: MediaAnalyzeRequest, current_user: AuthUser = Depends(get_current_user)) -> MediaInfoResponse:
+async def analyze_media(payload: MediaAnalyzeRequest, current_user: AuthUser = Depends(get_current_user_or_guest)) -> MediaInfoResponse:
+    _validate_guest_media_url(current_user, payload.url)
     try:
         data = analyze_media_url(payload.url)
     except MediaAnalysisError as exc:
@@ -129,7 +187,7 @@ async def analyze_media(payload: MediaAnalyzeRequest, current_user: AuthUser = D
 
 
 @router.get("/media/{media_id}/formats")
-async def get_media_formats(media_id: str, current_user: AuthUser = Depends(get_current_user)) -> list[dict]:
+async def get_media_formats(media_id: str, current_user: AuthUser = Depends(get_current_user_or_guest)) -> list[dict]:
     data = _MEDIA_CACHE.get((current_user.user_id, media_id))
     if data is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media was not analyzed yet.")
@@ -137,7 +195,7 @@ async def get_media_formats(media_id: str, current_user: AuthUser = Depends(get_
 
 
 @router.get("/downloads")
-async def list_downloads(current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> list[dict]:
+async def list_downloads(current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> list[dict]:
     result = await db.execute(
         select(DownloadJob).where(DownloadJob.user_id == current_user.user_id).order_by(DownloadJob.created_at.desc())
     )
@@ -147,9 +205,10 @@ async def list_downloads(current_user: AuthUser = Depends(get_current_user), db:
 @router.post("/downloads", response_model=DownloadJobResponse)
 async def start_download(
     payload: DownloadRequestSchema,
-    current_user: AuthUser = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user_or_guest),
     db: AsyncSession = Depends(get_db),
 ) -> DownloadJobResponse:
+    _validate_guest_media_url(current_user, payload.sourceUrl)
     try:
         resolve_destination(current_user.user_id, payload.destination)
     except StorageError as exc:
@@ -217,7 +276,7 @@ async def start_download(
 
 
 @router.get("/downloads/{job_id}")
-async def get_download(job_id: str, current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def get_download(job_id: str, current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(
         select(DownloadJob).where(DownloadJob.id == job_id, DownloadJob.user_id == current_user.user_id)
     )
@@ -228,7 +287,7 @@ async def get_download(job_id: str, current_user: AuthUser = Depends(get_current
 
 
 @router.post("/downloads/{job_id}/pause")
-async def pause_download(job_id: str, current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def pause_download(job_id: str, current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(
         select(DownloadJob).where(DownloadJob.id == job_id, DownloadJob.user_id == current_user.user_id)
     )
@@ -247,7 +306,7 @@ async def pause_download(job_id: str, current_user: AuthUser = Depends(get_curre
 
 
 @router.post("/downloads/{job_id}/resume")
-async def resume_download(job_id: str, current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def resume_download(job_id: str, current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(
         select(DownloadJob).where(DownloadJob.id == job_id, DownloadJob.user_id == current_user.user_id)
     )
@@ -272,7 +331,7 @@ async def resume_download(job_id: str, current_user: AuthUser = Depends(get_curr
 
 
 @router.post("/downloads/{job_id}/cancel")
-async def cancel_download(job_id: str, current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def cancel_download(job_id: str, current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(
         select(DownloadJob).where(DownloadJob.id == job_id, DownloadJob.user_id == current_user.user_id)
     )
@@ -292,7 +351,7 @@ async def cancel_download(job_id: str, current_user: AuthUser = Depends(get_curr
 
 
 @router.post("/downloads/{job_id}/retry")
-async def retry_download(job_id: str, current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def retry_download(job_id: str, current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(
         select(DownloadJob).where(DownloadJob.id == job_id, DownloadJob.user_id == current_user.user_id)
     )
@@ -320,7 +379,7 @@ async def retry_download(job_id: str, current_user: AuthUser = Depends(get_curre
 
 
 @router.delete("/downloads/{job_id}")
-async def remove_download(job_id: str, current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def remove_download(job_id: str, current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(
         select(DownloadJob).where(DownloadJob.id == job_id, DownloadJob.user_id == current_user.user_id)
     )
@@ -359,7 +418,7 @@ async def _resolve_owned_media_file(path: str, user_id: str, db: AsyncSession) -
 @router.post("/files/open-session")
 async def create_file_open_session(
     payload: FileOpenSessionRequest,
-    current_user: AuthUser = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user_or_guest),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     file_path = await _resolve_owned_media_file(payload.path, current_user.user_id, db)
@@ -369,7 +428,7 @@ async def create_file_open_session(
 @router.post("/files/download-session")
 async def create_file_download_session(
     payload: FileOpenSessionRequest,
-    current_user: AuthUser = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user_or_guest),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     file_path = await _resolve_owned_media_file(payload.path, current_user.user_id, db)
@@ -401,7 +460,7 @@ async def open_media_file(ticket: str, db: AsyncSession = Depends(get_db)) -> Fi
 async def list_library(
     kind: str | None = Query(default=None),
     search: str | None = Query(default=None),
-    current_user: AuthUser = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user_or_guest),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
     query = select(LibraryItem).where(LibraryItem.user_id == current_user.user_id)
@@ -424,7 +483,7 @@ async def list_library(
 
 
 @router.delete("/library/{library_id}")
-async def remove_library_item(library_id: str, current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def remove_library_item(library_id: str, current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(
         select(LibraryItem).where(LibraryItem.id == library_id, LibraryItem.user_id == current_user.user_id)
     )
@@ -448,7 +507,7 @@ async def remove_library_item(library_id: str, current_user: AuthUser = Depends(
 
 
 @router.get("/history")
-async def list_history(current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> list[dict]:
+async def list_history(current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> list[dict]:
     result = await db.execute(
         select(HistoryItem).where(HistoryItem.user_id == current_user.user_id).order_by(HistoryItem.timestamp.desc())
     )
@@ -456,7 +515,7 @@ async def list_history(current_user: AuthUser = Depends(get_current_user), db: A
 
 
 @router.delete("/history/{history_id}")
-async def remove_history_item(history_id: str, current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def remove_history_item(history_id: str, current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     result = await db.execute(
         select(HistoryItem).where(HistoryItem.id == history_id, HistoryItem.user_id == current_user.user_id)
     )
@@ -469,14 +528,14 @@ async def remove_history_item(history_id: str, current_user: AuthUser = Depends(
 
 
 @router.delete("/history")
-async def clear_history(current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def clear_history(current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(delete(HistoryItem).where(HistoryItem.user_id == current_user.user_id))
     await db.commit()
     return {"status": "cleared"}
 
 
 @router.get("/stats/overview")
-async def get_overview(days: int = Query(default=7, ge=1, le=365), current_user: AuthUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def get_overview(days: int = Query(default=7, ge=1, le=365), current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     today = datetime.now(timezone.utc).date()
     start_date = today - timedelta(days=days - 1)
     start_timestamp = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)

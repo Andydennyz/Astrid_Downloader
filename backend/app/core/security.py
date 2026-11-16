@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any
+from uuid import UUID
 
 import httpx
 import jwt
@@ -139,6 +141,37 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token is required.")
 
     return await verify_supabase_access_token(token)
+
+
+async def get_current_user_or_guest(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    guest_token: str | None = Header(default=None, alias="X-Guest-Token"),
+) -> AuthUser:
+    if authorization:
+        return await get_current_user(authorization)
+
+    if not guest_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="A bearer token or guest token is required.",
+        )
+
+    try:
+        parsed_token = UUID(guest_token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Guest token is invalid.",
+        ) from exc
+
+    if parsed_token.version != 4 or str(parsed_token) != guest_token.lower():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Guest token is invalid.",
+        )
+
+    guest_id = hashlib.sha256(guest_token.lower().encode("ascii")).hexdigest()
+    return AuthUser(user_id=f"guest-{guest_id}", role="guest")
 
 
 async def get_current_user_id(

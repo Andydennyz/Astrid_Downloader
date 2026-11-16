@@ -14,17 +14,18 @@ export type Platform =
   | "soundcloud"
   | "twitch"
   | "bandcamp"
+  | "facebook"
+  | "instagram"
+  | "pinterest"
+  | "tiktok"
+  | "x"
+  | "reddit"
+  | "dailymotion"
   | "other";
 
 /** Video quality preference. "best" lets the backend pick the top stream. */
 export type VideoQuality =
-  | "best"
-  | "2160p"
-  | "1440p"
-  | "1080p"
-  | "720p"
-  | "480p"
-  | "360p";
+  "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
 
 /** Audio output preference. "best" keeps the source codec untouched. */
 export type AudioFormat = "best" | "mp3" | "m4a" | "wav" | "flac";
@@ -34,14 +35,7 @@ export type DownloadMode = "video+audio" | "video" | "audio";
 export type ContainerPreference = "mp4" | "webm";
 
 export type FileExtension =
-  | "mp4"
-  | "webm"
-  | "mkv"
-  | "m4a"
-  | "mp3"
-  | "opus"
-  | "wav"
-  | "flac";
+  "mp4" | "webm" | "mkv" | "m4a" | "mp3" | "opus" | "wav" | "flac";
 
 /** One stream the source exposes, as reported by the analyzer. */
 export type FormatOption = {
@@ -230,8 +224,7 @@ export type AppSettings = {
 };
 
 export type UrlValidation =
-  | { valid: true; platform: Platform }
-  | { valid: false; reason: string };
+  { valid: true; platform: Platform } | { valid: false; reason: string };
 
 export type LibraryQuery = {
   kind?: MediaKind;

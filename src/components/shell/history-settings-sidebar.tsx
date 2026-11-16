@@ -122,7 +122,7 @@ export default function HistorySettingsSidebar({ open, onToggle }: { open: boole
                 recent.map((entry) => (
                   <div key={entry.id} className="rounded-xl border border-border/80 bg-card/60 p-2.5">
                     <div className="flex items-start gap-2.5">
-                      <img src={entry.thumbnailUrl} alt={entry.title} className="h-12 w-16 rounded-lg object-cover" />
+                      <img src={entry.thumbnailUrl} alt={entry.title} loading="lazy" decoding="async" className="h-12 w-16 rounded-lg object-cover" />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[12px] font-semibold leading-tight">{entry.title}</div>
                         <div className="mt-0.5 text-[10px] text-muted-foreground">{entry.creator}</div>
@@ -141,7 +141,7 @@ export default function HistorySettingsSidebar({ open, onToggle }: { open: boole
           <div className="flex-1 space-y-3 overflow-y-auto p-3">
             <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/35 p-3">
               <div className="text-[10px] uppercase tracking-[0.12em] text-sidebar-foreground/55">Download location</div>
-              <div className="mt-2 truncate text-sm font-medium">{settings?.general.downloadLocation ?? "~/Downloads/Astrid"}</div>
+              <div className="mt-2 truncate text-sm font-medium">{settings?.general.downloadLocation ?? "~/Downloads/MediaDock"}</div>
             </div>
 
             <div className="space-y-2 rounded-xl border border-sidebar-border bg-sidebar-accent/25 p-3">

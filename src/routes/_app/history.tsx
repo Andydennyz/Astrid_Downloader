@@ -8,7 +8,7 @@ import { useHistory } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
 
 export const Route = createFileRoute("/_app/history")({
-  head: () => ({ meta: [{ title: "Download History · Astrid Downloader" }] }),
+  head: () => ({ meta: [{ title: "Download History · MediaDock" }] }),
   component: Page,
 });
 
@@ -118,7 +118,7 @@ function Page() {
                   <tr key={entry.id} className="rounded-2xl bg-card/50 ring-1 ring-border">
                     <td className="rounded-l-2xl p-3">
                       <div className="flex items-center gap-3">
-                        <img src={entry.thumbnailUrl} alt={entry.title} className="h-12 w-12 rounded-lg object-cover" />
+                        <img src={entry.thumbnailUrl} alt={entry.title} loading="lazy" decoding="async" className="h-12 w-12 rounded-lg object-cover" />
                         <div className="min-w-0">
                           <div className="truncate font-medium">{entry.title}</div>
                           <div className="truncate text-xs text-muted-foreground">{entry.creator}</div>

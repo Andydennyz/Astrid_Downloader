@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 import yt_dlp
 
@@ -11,18 +12,34 @@ class MediaAnalysisError(Exception):
     pass
 
 
-def _detect_platform(url: str) -> str:
-    lowered = url.lower()
-    if "youtube.com" in lowered or "youtu.be" in lowered:
-        return "youtube"
-    if "vimeo.com" in lowered:
-        return "vimeo"
-    if "soundcloud.com" in lowered:
-        return "soundcloud"
-    if "twitch.tv" in lowered:
-        return "twitch"
-    if "bandcamp.com" in lowered:
-        return "bandcamp"
+_PLATFORM_DOMAINS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("youtube", ("youtube.com", "youtu.be")),
+    ("vimeo", ("vimeo.com",)),
+    ("soundcloud", ("soundcloud.com",)),
+    ("twitch", ("twitch.tv",)),
+    ("bandcamp", ("bandcamp.com",)),
+    ("facebook", ("facebook.com", "fb.watch")),
+    ("instagram", ("instagram.com", "instagr.am")),
+    ("pinterest", ("pinterest.com", "pin.it")),
+    ("tiktok", ("tiktok.com",)),
+    ("x", ("twitter.com", "x.com")),
+    ("reddit", ("reddit.com", "redd.it")),
+    ("dailymotion", ("dailymotion.com", "dai.ly")),
+)
+
+
+def detect_platform(url: str) -> str:
+    try:
+        hostname = (urlsplit(url).hostname or "").rstrip(".").lower()
+    except ValueError:
+        return "other"
+
+    for platform, domains in _PLATFORM_DOMAINS:
+        if any(
+            hostname == domain or hostname.endswith(f".{domain}")
+            for domain in domains
+        ):
+            return platform
     return "other"
 
 
@@ -32,12 +49,17 @@ def _format_formats(info: dict[str, Any]) -> list[dict[str, Any]]:
         if not entry.get("format_id"):
             continue
 
+        height = entry.get("height")
+        width = entry.get("width")
+        if isinstance(height, int) and isinstance(width, int):
+            height = min(height, width)
+
         format_kind = "muxed" if entry.get("vcodec") not in (None, "none") and entry.get("acodec") not in (None, "none") else "video" if entry.get("vcodec") not in (None, "none") else "audio"
         format_record = {
             "formatId": str(entry.get("format_id", "unknown")),
             "kind": format_kind,
             "container": (entry.get("ext") or "mp4").lower(),
-            "height": entry.get("height"),
+            "height": height,
             "fps": entry.get("fps"),
             "videoCodec": entry.get("vcodec"),
             "audioCodec": entry.get("acodec"),
@@ -93,7 +115,7 @@ def _format_uploaded_at(info: dict[str, Any]) -> str:
 
 
 def analyze_media_url(url: str) -> dict[str, Any]:
-    platform = _detect_platform(url)
+    platform = detect_platform(url)
     if not url:
         raise ValueError("A media URL is required.")
 

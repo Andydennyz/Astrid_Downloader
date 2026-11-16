@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase.ts";
 
 function SignInPage() {
@@ -8,7 +8,9 @@ function SignInPage() {
 
   const handleSignIn = async (nextProvider: "google" | "github") => {
     if (!supabase) {
-      setError("Supabase is not configured for this app yet. Add VITE_SUPABASE_URL and a publishable key.");
+      setError(
+        "Supabase is not configured for this app yet. Add VITE_SUPABASE_URL and a publishable key.",
+      );
       return;
     }
 
@@ -24,7 +26,9 @@ function SignInPage() {
       if (signInError) throw signInError;
     } catch (caughtError) {
       const message =
-        caughtError instanceof Error ? caughtError.message : "Unable to start sign-in flow.";
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to start sign-in flow.";
       setError(message);
     } finally {
       setProvider(null);
@@ -38,14 +42,22 @@ function SignInPage() {
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-muted-foreground">
             backend neutral
           </p>
-          <h1 className="text-3xl font-semibold">Authentication is not configured yet</h1>
+          <h1 className="text-3xl font-semibold">
+            Authentication is not configured yet
+          </h1>
           <p className="text-muted-foreground">
-            Add your Supabase browser config or swap in any other auth provider without changing the
-            app’s neutral UI/service contract.
+            Add your Supabase browser config or swap in any other auth provider
+            without changing the app’s neutral UI/service contract.
           </p>
+          <Link
+            to="/new"
+            className="text-sm text-primary underline underline-offset-4"
+          >
+            Continue without signing in
+          </Link>
           <p className="text-sm text-muted-foreground">
-            Required env values: VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or
-            VITE_SUPABASE_ANON_KEY).
+            Required env values: VITE_SUPABASE_URL and
+            VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY).
           </p>
         </div>
       </div>
@@ -60,7 +72,10 @@ function SignInPage() {
             sign in
           </p>
           <h1 className="text-3xl font-semibold">Welcome back</h1>
-          <p className="text-muted-foreground">Continue with your provider to unlock your downloads.</p>
+          <p className="text-muted-foreground">
+            Sign in to keep your downloads tied to your account, or continue
+            without signing in on this browser.
+          </p>
         </div>
 
         <div className="space-y-3">
@@ -81,6 +96,12 @@ function SignInPage() {
             {provider === "github" ? "Opening GitHub…" : "Continue with GitHub"}
           </button>
         </div>
+
+        <p className="text-center text-sm">
+          <Link to="/new" className="text-primary underline underline-offset-4">
+            Continue without signing in
+          </Link>
+        </p>
 
         {error ? (
           <p className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">

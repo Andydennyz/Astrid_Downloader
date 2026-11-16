@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Clock3, Download, Eye, PauseCircle, Play, RotateCcw, Trash2, XCircle } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Activity, Clock3, Download, Eye, FolderOpen, LoaderCircle, PauseCircle, Play, RotateCcw, Trash2, XCircle } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
 import StatusBadge from "@/components/status-badge.tsx";
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils.ts";
 import type { DownloadJob } from "@/services/index.ts";
 
 export const Route = createFileRoute("/_app/queue")({
-  head: () => ({ meta: [{ title: "Download Queue · Astrid Downloader" }] }),
+  head: () => ({ meta: [{ title: "Download Queue · MediaDock" }] }),
   component: Page,
 });
 
@@ -34,6 +34,29 @@ function ActionButton({
   );
 }
 
+function getActivityMessage(job: DownloadJob) {
+  switch (job.status) {
+    case "queued":
+      return "Waiting for a download slot";
+    case "analyzing":
+      return "Checking the link and available formats";
+    case "downloading":
+      if (job.speedBps) return `Downloading at ${formatSpeed(job.speedBps)}`;
+      if (job.downloadedBytes > 0) return `${formatBytes(job.downloadedBytes)} downloaded`;
+      return "Connecting to source…";
+    case "processing":
+      return "Finishing and saving your file";
+    case "paused":
+      return "Download paused";
+    case "completed":
+      return "Download complete";
+    case "failed":
+      return job.error || "Download failed";
+    case "cancelled":
+      return "Download cancelled";
+  }
+}
+
 function QueueCard({ job, onPause, onResume, onCancel, onRetry, onRemove }: {
   job: DownloadJob;
   onPause: (jobId: string) => void;
@@ -42,6 +65,13 @@ function QueueCard({ job, onPause, onResume, onCancel, onRetry, onRemove }: {
   onRetry: (jobId: string) => void;
   onRemove: (jobId: string) => void;
 }) {
+  const progress = job.status === "completed" ? 100 : Math.min(100, Math.max(0, (job.progress ?? 0) * 100));
+  const isActive = ["queued", "analyzing", "downloading", "processing"].includes(job.status);
+  const isIndeterminate =
+    job.status === "queued" ||
+    job.status === "analyzing" ||
+    (job.status === "downloading" && (!job.totalBytes || !job.downloadedBytes));
+  const activityMessage = getActivityMessage(job);
   const primaryAction =
     job.status === "paused"
       ? { label: "Resume", icon: Play, onClick: () => onResume(job.id) }
@@ -55,7 +85,7 @@ function QueueCard({ job, onPause, onResume, onCancel, onRetry, onRemove }: {
     <div className="rounded-2xl border border-border bg-card/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div className="flex flex-col gap-4 md:flex-row md:items-center">
         <div className="relative h-20 w-full overflow-hidden rounded-xl bg-muted md:w-28">
-          <img src={job.request.thumbnailUrl} alt={job.request.title} className="h-full w-full object-cover" />
+          <img src={job.request.thumbnailUrl} alt={job.request.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[10px] text-white">
             <span>{job.qualityLabel}</span>
             <span>{job.extension.toUpperCase()}</span>
@@ -78,24 +108,59 @@ function QueueCard({ job, onPause, onResume, onCancel, onRetry, onRemove }: {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5"><Download className="size-3.5" />{job.status === "completed" ? "Complete" : `${Math.round((job.progress ?? 0) * 100)}%`}</span>
-            <span className="inline-flex items-center gap-1.5"><Clock3 className="size-3.5" />{job.speedBps ? formatSpeed(job.speedBps) : "Waiting"}</span>
+            <span className="inline-flex items-center gap-1.5"><Download className="size-3.5" />{Math.round(progress)}%</span>
+            <span className="inline-flex items-center gap-1.5"><Clock3 className="size-3.5" />{job.speedBps ? formatSpeed(job.speedBps) : job.status === "queued" ? "Queued" : "—"}</span>
             <span className="inline-flex items-center gap-1.5"><Eye className="size-3.5" />{job.etaSec ? formatEta(job.etaSec) : "—"}</span>
           </div>
 
-          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                "h-full rounded-full bg-gradient-to-r from-primary to-accent transition-[width] duration-500",
-                job.status === "failed" && "bg-gradient-to-r from-destructive to-orange-400",
-                job.status === "cancelled" && "bg-muted",
-              )}
-              style={{ width: `${Math.max(6, (job.progress ?? 0) * 100)}%` }}
-            />
+          <div className="mt-3 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            {isActive ? (
+              <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
+            ) : (
+              <Activity className="size-3.5 shrink-0" />
+            )}
+            <span className={cn("truncate", job.status === "failed" && "text-destructive")}>{activityMessage}</span>
+            {job.status === "downloading" && job.downloadedBytes > 0 && (
+              <span className="ml-auto shrink-0 tabular-nums">{formatBytes(job.downloadedBytes)} received</span>
+            )}
+          </div>
+
+          <div
+            className="relative mt-2 h-2.5 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-label={`Download progress for ${job.request.title}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress)}
+            aria-valuetext={`${Math.round(progress)}% · ${activityMessage}`}
+          >
+            {isIndeterminate ? (
+              <span className="download-progress-indicator absolute inset-y-0 left-0 w-1/4 rounded-full bg-gradient-to-r from-primary/50 via-primary to-accent" />
+            ) : (
+              <div
+                className={cn(
+                  "h-full rounded-full bg-gradient-to-r from-primary to-accent transition-[width] duration-1000 ease-out",
+                  job.status === "failed" && "bg-gradient-to-r from-destructive to-orange-400",
+                  job.status === "cancelled" && "bg-muted",
+                )}
+                style={{ width: `${progress}%` }}
+              />
+            )}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 md:justify-end">
+          <Button
+            type="button"
+            nativeButton={false}
+            render={<Link to={job.kind === "video" ? "/video" : "/audio"} />}
+            variant="ghost"
+            size="sm"
+            className="gap-1.5"
+          >
+            <FolderOpen className="size-3.5" />
+            {job.kind === "video" ? "Video library" : "Audio library"}
+          </Button>
           {primaryAction && (
             <ActionButton
               label={primaryAction.label}

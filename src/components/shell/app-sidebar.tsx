@@ -2,7 +2,11 @@ import { Link, useLocation } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { HardDrive, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import Logo from "@/components/logo.tsx";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.tsx";
 import { useDownloads } from "@/hooks/use-downloads.ts";
 import { NAV_SECTIONS, SETTINGS_NAV, type NavItem } from "@/lib/navigation.ts";
 import { cn } from "@/lib/utils.ts";
@@ -40,13 +44,20 @@ function NavLink({
           transition={{ type: "spring", stiffness: 500, damping: 38 }}
         />
       )}
-      <Icon className={cn("size-[17px] shrink-0 transition-colors", active ? "text-primary" : "group-hover:text-sidebar-foreground")} />
+      <Icon
+        className={cn(
+          "size-[17px] shrink-0 transition-colors",
+          active ? "text-primary" : "group-hover:text-sidebar-foreground",
+        )}
+      />
       {!collapsed && <span className="truncate">{item.label}</span>}
       {badge !== undefined && badge > 0 && (
         <span
           className={cn(
             "grid h-[18px] min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground tabular-nums",
-            collapsed ? "absolute top-0.5 right-0.5 h-3.5 min-w-3.5 text-[9px]" : "ml-auto",
+            collapsed
+              ? "absolute top-0.5 right-0.5 h-3.5 min-w-3.5 text-[9px]"
+              : "ml-auto",
           )}
         >
           {badge}
@@ -63,10 +74,17 @@ function NavLink({
   );
 }
 
-export function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+export function SidebarNav({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
   const { pathname } = useLocation();
   const { activeCount } = useDownloads();
-  const isActive = (to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
+  const isActive = (to: string) =>
+    to === "/" ? pathname === "/" : pathname.startsWith(to);
 
   return (
     <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-2">
@@ -92,7 +110,12 @@ export function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNa
         </div>
       ))}
       <div className="mt-auto flex flex-col gap-0.5">
-        <NavLink item={SETTINGS_NAV} collapsed={collapsed} active={isActive(SETTINGS_NAV.to)} onNavigate={onNavigate} />
+        <NavLink
+          item={SETTINGS_NAV}
+          collapsed={collapsed}
+          active={isActive(SETTINGS_NAV.to)}
+          onNavigate={onNavigate}
+        />
       </div>
     </nav>
   );
@@ -122,14 +145,25 @@ function StorageMeter({ collapsed }: { collapsed: boolean }) {
         Downloads drive
       </div>
       <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-sidebar-border">
-        <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent" style={{ width: `${used * 100}%` }} />
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
+          style={{ width: `${used * 100}%` }}
+        />
       </div>
-      <div className="mt-2 text-[11px] text-sidebar-foreground/55">310 GB of 500 GB used</div>
+      <div className="mt-2 text-[11px] text-sidebar-foreground/55">
+        310 GB of 500 GB used
+      </div>
     </div>
   );
 }
 
-export default function AppSidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export default function AppSidebar({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   return (
     <motion.aside
       initial={false}
@@ -137,8 +171,13 @@ export default function AppSidebar({ collapsed, onToggle }: { collapsed: boolean
       transition={{ type: "spring", stiffness: 380, damping: 36 }}
       className="hidden h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex"
     >
-      <div className={cn("flex h-16 items-center px-4", collapsed ? "justify-center" : "justify-between")}>
-        <Link to="/" className="cursor-pointer" aria-label="Astrid Downloader home">
+      <div
+        className={cn(
+          "flex h-16 items-center px-4",
+          collapsed ? "justify-center" : "justify-between",
+        )}
+      >
+        <Link to="/" className="cursor-pointer" aria-label="MediaDock home">
           <Logo compact={collapsed} />
         </Link>
         {!collapsed && (

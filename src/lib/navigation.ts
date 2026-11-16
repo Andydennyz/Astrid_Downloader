@@ -24,18 +24,53 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Workspace",
     items: [
-      { label: "Overview", to: "/", icon: LayoutDashboard, description: "Your download activity at a glance" },
-      { label: "New Download", to: "/new", icon: PlusCircle, description: "Paste a link and pick a format" },
-      { label: "Download Queue", to: "/queue", icon: ListOrdered, description: "Active and waiting downloads" },
+      {
+        label: "Overview",
+        to: "/",
+        icon: LayoutDashboard,
+        description: "Your download activity at a glance",
+      },
+      {
+        label: "New Download",
+        to: "/new",
+        icon: PlusCircle,
+        description: "Paste a link and pick a format",
+      },
+      {
+        label: "Download Queue",
+        to: "/queue",
+        icon: ListOrdered,
+        description: "Active and waiting downloads",
+      },
     ],
   },
   {
     label: "Library",
     items: [
-      { label: "Completed", to: "/completed", icon: CheckCircle2, description: "Every finished download" },
-      { label: "Audio", to: "/audio", icon: AudioLines, description: "Tracks, mixes and podcasts" },
-      { label: "Video", to: "/video", icon: Clapperboard, description: "Films, talks and clips" },
-      { label: "History", to: "/history", icon: History, description: "Completed, failed and cancelled" },
+      {
+        label: "Completed",
+        to: "/completed",
+        icon: CheckCircle2,
+        description: "Every finished download",
+      },
+      {
+        label: "Audio",
+        to: "/audio",
+        icon: AudioLines,
+        description: "Tracks, mixes and podcasts",
+      },
+      {
+        label: "Video",
+        to: "/video",
+        icon: Clapperboard,
+        description: "Films, talks and clips",
+      },
+      {
+        label: "History",
+        to: "/history",
+        icon: History,
+        description: "Completed, failed and cancelled",
+      },
     ],
   },
 ];
@@ -47,7 +82,10 @@ export const SETTINGS_NAV: NavItem = {
   description: "Preferences, appearance and advanced options",
 };
 
-export const ALL_NAV: NavItem[] = [...NAV_SECTIONS.flatMap((s) => s.items), SETTINGS_NAV];
+export const ALL_NAV: NavItem[] = [
+  ...NAV_SECTIONS.flatMap((s) => s.items),
+  SETTINGS_NAV,
+];
 
 /** Longer titles for the top bar than the compact sidebar labels. */
 const PAGE_TITLES: Partial<Record<RoutePath, string>> = {
@@ -63,6 +101,6 @@ export function findNav(pathname: string): NavItem | undefined {
 }
 
 export function pageTitle(item: NavItem | undefined) {
-  if (!item) return "Astrid";
+  if (!item) return "MediaDock";
   return PAGE_TITLES[item.to] ?? item.label;
 }
