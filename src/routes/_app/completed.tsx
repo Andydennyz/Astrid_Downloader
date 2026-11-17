@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, FolderOpen, Grid2x2, List, Search, Trash2 } from "lucide-react";
+import { Copy, Download, FolderOpen, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer, Panel } from "@/components/layout.tsx";
+import ViewModeToggle, { type ViewMode } from "@/components/view-mode-toggle.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
@@ -18,7 +19,6 @@ export const Route = createFileRoute("/_app/completed")({
 });
 
 type SortMode = "newest" | "oldest" | "size" | "title";
-type ViewMode = "grid" | "list";
 
 function LibraryCard({ item, onOpen, onSave, onCopy, onRemove }: {
   item: LibraryItem;
@@ -123,14 +123,7 @@ function Page() {
           <p className="text-sm text-muted-foreground">All finished downloads</p>
           <h2 className="font-display text-2xl font-semibold tracking-tight">Completed downloads</h2>
         </div>
-        <div className="flex gap-2 rounded-full border border-border bg-card/70 p-1">
-          <Button type="button" variant={view === "grid" ? "default" : "ghost"} size="sm" onClick={() => setView("grid")}>
-            <Grid2x2 className="size-3.5" />
-          </Button>
-          <Button type="button" variant={view === "list" ? "default" : "ghost"} size="sm" onClick={() => setView("list")}>
-            <List className="size-3.5" />
-          </Button>
-        </div>
+        <ViewModeToggle value={view} onChange={setView} />
       </div>
 
       <Panel>

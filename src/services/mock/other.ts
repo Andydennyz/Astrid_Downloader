@@ -7,6 +7,7 @@ import type {
 } from "@/services/contracts.ts";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "@/services/settings-storage.ts";
 import type { ActivityPoint } from "@/services/types.ts";
+import { writeClipboardText } from "@/lib/clipboard.ts";
 import { DEFAULT_ROOT } from "./data.ts";
 import { delay, mockDb } from "./store.ts";
 
@@ -110,9 +111,7 @@ export function createMockFileSystemService(): FileSystemService {
       await delay(300);
     },
     async copyPath(path) {
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(path);
-      }
+      await writeClipboardText(path);
     },
     async chooseFolder(current) {
       await delay(450);

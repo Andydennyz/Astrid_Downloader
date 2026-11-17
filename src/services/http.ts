@@ -9,6 +9,7 @@ import type {
 } from "./contracts.ts";
 import { getSupabaseSession } from "../lib/supabase.ts";
 import { getGuestToken } from "../lib/guest.ts";
+import { writeClipboardText } from "../lib/clipboard.ts";
 import { ServiceError } from "./errors.ts";
 import { createLocalSettingsService } from "./mock/other.ts";
 import type {
@@ -77,14 +78,15 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = {
+    ...(await authHeaders()),
+    ...(init.headers ?? {}),
+  };
   let response: Response;
   try {
     response = await fetch(urlFor(path), {
       ...init,
-      headers: {
-        ...(await authHeaders()),
-        ...(init.headers ?? {}),
-      },
+      headers,
     });
   } catch (error) {
     if (error instanceof TypeError) {
@@ -475,10 +477,20 @@ export function createHttpServices(): AppServices {
         if (typeof navigator === "undefined" || !navigator.clipboard) {
           throw new ServiceError(
             "CLIPBOARD_UNAVAILABLE",
-            "Clipboard is unavailable in this environment.",
+            "Automatic clipboard reading is unavailable here. Focus the link field and use your device's Paste command.",
           );
         }
         return navigator.clipboard.readText();
+      },
+      writeText: async (text) => {
+        try {
+          await writeClipboardText(text);
+        } catch (error) {
+          throw new ServiceError(
+            "CLIPBOARD_UNAVAILABLE",
+            error instanceof Error ? error.message : "Could not write to clipboard.",
+          );
+        }
       },
       readSupportedUrl: async () => {
         if (typeof navigator === "undefined" || !navigator.clipboard)
@@ -553,14 +565,8 @@ export function createHttpServices(): AppServices {
         link.remove();
       },
       copyPath: async (path) => {
-        if (typeof navigator === "undefined" || !navigator.clipboard) {
-          throw new ServiceError(
-            "CLIPBOARD_UNAVAILABLE",
-            "Clipboard access is not available in this browser.",
-          );
-        }
         try {
-          await navigator.clipboard.writeText(path);
+          await writeClipboardText(path);
         } catch (error) {
           throw new ServiceError(
             "CLIPBOARD_UNAVAILABLE",

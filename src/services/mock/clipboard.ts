@@ -1,5 +1,6 @@
 import type { ClipboardService } from "@/services/contracts.ts";
 import { ServiceError } from "@/services/errors.ts";
+import { writeClipboardText } from "@/lib/clipboard.ts";
 import { normalizeUrl, validateUrl } from "./media.ts";
 
 export function createMockClipboardService(): ClipboardService {
@@ -16,6 +17,17 @@ export function createMockClipboardService(): ClipboardService {
         return await navigator.clipboard.readText();
       } catch {
         throw new ServiceError("CLIPBOARD_UNAVAILABLE", "Clipboard access was blocked. Paste manually instead.");
+      }
+    },
+
+    async writeText(text) {
+      try {
+        await writeClipboardText(text);
+      } catch (error) {
+        throw new ServiceError(
+          "CLIPBOARD_UNAVAILABLE",
+          error instanceof Error ? error.message : "Could not write to clipboard.",
+        );
       }
     },
 

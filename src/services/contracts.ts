@@ -33,6 +33,8 @@ export type MediaService = {
 export type ClipboardService = {
   /** Reads raw clipboard text when the browser allows it. */
   readText: () => Promise<string>;
+  /** Writes text using the browser clipboard when available. */
+  writeText: (text: string) => Promise<void>;
   /** Returns a supported media URL if the clipboard contains one, or null. */
   readSupportedUrl: () => Promise<string | null>;
 };

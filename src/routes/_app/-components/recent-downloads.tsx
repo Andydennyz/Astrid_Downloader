@@ -48,6 +48,15 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
     if (job) toast.success("Added to queue", { description: entry.title });
   };
 
+  const copyOriginalLink = async () => {
+    try {
+      await getServices().clipboard.writeText(entry.sourceUrl);
+      toast.success("Original link copied");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not copy the original link."));
+    }
+  };
+
   const path = entry.filePath;
   return (
     <div className="flex items-center justify-end gap-0.5">
@@ -87,12 +96,7 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
             <RotateCcw />
             Download again
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              void navigator.clipboard?.writeText(entry.sourceUrl);
-              toast.success("Original link copied");
-            }}
-          >
+          <DropdownMenuItem onClick={() => void copyOriginalLink()}>
             <Copy />
             Copy original link
           </DropdownMenuItem>

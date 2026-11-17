@@ -17,6 +17,11 @@ Use Python 3.13 for the backend runtime. The project dependencies currently targ
 Python 3.13 toolchain; Python 3.14 is not yet compatible with the async database and
 pydantic build chain.
 
+For the full local Docker stack, follow the Docker setup in the repository-root
+[README](../README.md). Compose mounts `docker.env` at runtime, keeps the API on the
+internal Docker network, and persists downloads/database files in the repository's
+ignored `data` directory.
+
 From the repository root, create the virtual environment and install dependencies:
 
 ```powershell

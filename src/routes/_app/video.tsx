@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Clapperboard, Download, Search } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
+import ViewModeToggle from "@/components/view-mode-toggle.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/_app/video")({
 function Page() {
   const [query, setQuery] = useState("");
   const [resolution, setResolution] = useState("all");
+  const [view, setView] = useState<"grid" | "list">("grid");
   const libraryQuery = useLibrary({ kind: "video" });
   const { open, saveToDevice } = useFileActions();
 
@@ -36,9 +38,12 @@ function Page() {
           <p className="text-sm text-muted-foreground">Everything saved locally</p>
           <h2 className="font-display text-2xl font-semibold tracking-tight">Video library</h2>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-sm text-muted-foreground">
-          <Clapperboard className="size-3.5" />
-          {libraryQuery.data?.length ?? 0} videos
+        <div className="flex items-center gap-2">
+          <ViewModeToggle value={view} onChange={setView} />
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-sm text-muted-foreground">
+            <Clapperboard className="size-3.5" />
+            {libraryQuery.data?.length ?? 0} videos
+          </div>
         </div>
       </div>
 
@@ -72,9 +77,9 @@ function Page() {
             <DataLoadError error={libraryQuery.error} onRetry={() => void libraryQuery.refetch()} />
           </div>
         ) : libraryQuery.isLoading ? (
-          <div className="grid gap-4 px-5 pb-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className={view === "grid" ? "grid gap-4 px-5 pb-5 md:grid-cols-2 2xl:grid-cols-3" : "space-y-2 px-5 pb-5"}>
             {Array.from({ length: 3 }).map((_, index) => (
-              <Skeleton key={index} className="h-80 rounded-2xl" />
+              <Skeleton key={index} className={view === "grid" ? "h-80 rounded-2xl" : "h-24 rounded-2xl"} />
             ))}
           </div>
         ) : visible.length === 0 ? (
@@ -83,11 +88,11 @@ function Page() {
               No video downloads match the current filters.
             </div>
           </div>
-        ) : (
-          <div className="grid gap-4 px-5 pb-5 md:grid-cols-2 xl:grid-cols-3">
+        ) : view === "grid" ? (
+          <div className="grid gap-4 px-5 pb-5 md:grid-cols-2 2xl:grid-cols-3">
             {visible.map((item) => (
               <div key={item.id} className="overflow-hidden rounded-2xl border border-border bg-card/60">
-                <div className="relative h-52 overflow-hidden">
+                <div className="relative h-48 overflow-hidden">
                   <img src={item.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-3 py-2 text-[10px] text-white">
                     <span>{item.qualityLabel}</span>
@@ -112,6 +117,31 @@ function Page() {
                       Save to device
                     </Button>
                   </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2 px-5 pb-5">
+            {visible.map((item) => (
+              <div key={item.id} className="flex flex-col gap-3 rounded-2xl border border-border bg-card/60 p-3 sm:flex-row sm:items-center">
+                <img src={item.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" className="h-16 w-full rounded-xl object-cover sm:w-20" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{item.title}</p>
+                  <p className="truncate text-sm text-muted-foreground">{item.creator}</p>
+                </div>
+                <div className="flex gap-4 text-xs text-muted-foreground sm:flex-col sm:gap-1 sm:text-right">
+                  <span>{item.extension.toUpperCase()} · {item.qualityLabel}</span>
+                  <span>{item.height ?? "—"}p · {formatDuration(item.durationSec)} · {formatBytes(item.sizeBytes)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => void open(item.filePath)}>
+                    Watch
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => void saveToDevice(item.filePath)}>
+                    <Download className="size-3.5" />
+                    Save
+                  </Button>
                 </div>
               </div>
             ))}

@@ -21,6 +21,7 @@ type UrlBarProps = {
 export default function UrlBar({ url, onUrlChange, onAnalyze, onClear, analyzing }: UrlBarProps) {
   const [touched, setTouched] = useState(false);
   const lastDetectedUrl = useRef<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const validation = getServices().media.validateUrl(url);
   const showError = touched && !validation.valid && url.trim().length > 0;
   const showValid = validation.valid && !analyzing;
@@ -58,7 +59,10 @@ export default function UrlBar({ url, onUrlChange, onAnalyze, onClear, analyzing
       submit(text);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Clipboard access was blocked";
-      toast.error(message, { description: "Click the field and press Ctrl+V or Cmd+V instead." });
+      inputRef.current?.focus();
+      toast.info(message, {
+        description: "Use your device’s Paste command in the focused link field.",
+      });
     }
   };
 
@@ -108,6 +112,7 @@ export default function UrlBar({ url, onUrlChange, onAnalyze, onClear, analyzing
             {showError ? <AlertCircle className="size-4" /> : showValid ? <CheckCircle2 className="size-4" /> : <Link2 className="size-4" />}
           </span>
           <input
+            ref={inputRef}
             type="url"
             inputMode="url"
             autoComplete="off"

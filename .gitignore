@@ -34,7 +34,10 @@ tsconfig.tsbuildinfo
 
 # Environment variables
 .env*
+.dev.vars*
 .venv*
+/backend/docker.env
+/data/
 
 # Cloudflare
 .wrangler
