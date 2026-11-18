@@ -4,7 +4,9 @@ import type {
   AppSettings,
   AudioFormat,
   DownloadMode,
+  DownloadRequest,
   FormatSelection,
+  LibraryItem,
   MediaInfo,
   MediaKind,
   VideoQuality,
@@ -76,6 +78,37 @@ export function outputFolder(
   if (general.organizeByType) parts.push(kind === "audio" ? "Audio" : "Video");
   if (general.organizeByCreator) parts.push(sanitizeFilename(creator) || "Unknown");
   return parts.join("/");
+}
+
+export function getHttpSourceUrl(sourceUrl: string): string | null {
+  try {
+    const url = new URL(sourceUrl);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function buildRedownloadRequest(
+  item: LibraryItem,
+  settings: AppSettings,
+): DownloadRequest {
+  return {
+    sourceUrl: item.sourceUrl,
+    title: item.title,
+    creator: item.creator,
+    thumbnailUrl: item.thumbnailUrl,
+    durationSec: item.durationSec,
+    selection: {
+      mode: item.kind === "audio" ? "audio" : "video+audio",
+      videoQuality: settings.general.defaultVideoQuality,
+      audioFormat: settings.general.defaultAudioFormat,
+      container: settings.general.defaultContainer,
+    },
+    destination: outputFolder(".", item.kind, item.creator, settings.general),
+  };
 }
 
 /** One-click demo links for trying the analyzer. */

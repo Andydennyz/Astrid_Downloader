@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
 import ViewModeToggle, { type ViewMode } from "@/components/view-mode-toggle.tsx";
+import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import StatusBadge from "@/components/status-badge.tsx";
-import { useHistory } from "@/hooks/use-media-data.ts";
+import { useHistory, useRemoveHistoryEntry } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
 import type { HistoryEntry } from "@/services/types.ts";
 
@@ -15,7 +16,7 @@ export const Route = createFileRoute("/_app/history")({
   component: Page,
 });
 
-function HistoryCard({ entry }: { entry: HistoryEntry }) {
+function HistoryCard({ entry, onDelete }: { entry: HistoryEntry; onDelete: (entry: HistoryEntry) => void }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card/70">
       <div className="relative h-48 overflow-hidden">
@@ -39,6 +40,16 @@ function HistoryCard({ entry }: { entry: HistoryEntry }) {
           <span className="col-span-2">{new Date(entry.timestamp).toLocaleString()}</span>
         </div>
         {entry.error && <p className="line-clamp-2 text-xs text-destructive">{entry.error}</p>}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-destructive hover:text-destructive"
+          onClick={() => onDelete(entry)}
+        >
+          <Trash2 className="mr-1 size-3.5" />
+          Delete history and media
+        </Button>
       </div>
     </div>
   );
@@ -51,6 +62,7 @@ function Page() {
   const [view, setView] = useState<ViewMode>("grid");
   const [now, setNow] = useState(() => Date.now());
   const historyQuery = useHistory();
+  const removeEntry = useRemoveHistoryEntry();
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -139,7 +151,13 @@ function Page() {
             </div>
           ) : (
             <div className="grid gap-4 px-5 pb-5 md:grid-cols-2 2xl:grid-cols-3">
-              {visible.map((entry) => <HistoryCard key={entry.id} entry={entry} />)}
+              {visible.map((entry) => (
+                <HistoryCard
+                  key={entry.id}
+                  entry={entry}
+                  onDelete={(item) => void removeEntry(item)}
+                />
+              ))}
             </div>
           )
         ) : (
@@ -153,20 +171,21 @@ function Page() {
                   <th className="pb-2 font-medium">Size</th>
                   <th className="pb-2 font-medium">Duration</th>
                   <th className="pb-2 font-medium">Time</th>
+                  <th className="pb-2 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {historyQuery.isLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-muted-foreground">Loading history…</td>
+                    <td colSpan={7} className="p-6 text-center text-muted-foreground">Loading history…</td>
                   </tr>
                 ) : historyQuery.isError ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-muted-foreground">History is unavailable.</td>
+                    <td colSpan={7} className="p-6 text-center text-muted-foreground">History is unavailable.</td>
                   </tr>
                 ) : visible.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-center text-muted-foreground">
+                    <td colSpan={7} className="rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-center text-muted-foreground">
                       No history items match the current filters.
                     </td>
                   </tr>
@@ -187,7 +206,18 @@ function Page() {
                       <td className="p-3 text-muted-foreground">{entry.extension.toUpperCase()} · {entry.qualityLabel}</td>
                       <td className="p-3 text-muted-foreground">{entry.sizeBytes ? formatBytes(entry.sizeBytes) : "—"}</td>
                       <td className="p-3 text-muted-foreground">{formatDuration(entry.durationSec)}</td>
-                      <td className="rounded-r-2xl p-3 text-muted-foreground">{new Date(entry.timestamp).toLocaleString()}</td>
+                      <td className="p-3 text-muted-foreground">{new Date(entry.timestamp).toLocaleString()}</td>
+                      <td className="rounded-r-2xl p-3 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Delete ${entry.title} from history and remove its media`}
+                          onClick={() => void removeEntry(entry)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </td>
                     </tr>
                   ))
                 )}

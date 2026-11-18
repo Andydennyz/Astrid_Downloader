@@ -1,17 +1,14 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, FolderOpen, Search, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { Copy, FolderOpen, Search, Trash2 } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
 import ViewModeToggle, { type ViewMode } from "@/components/view-mode-toggle.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
-import { useFileActions, useLibrary } from "@/hooks/use-media-data.ts";
+import { useFileActions, useLibrary, useRemoveLibraryItem } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
-import { errorMessage } from "@/services/errors.ts";
-import { getServices, type LibraryItem } from "@/services/index.ts";
+import type { LibraryItem } from "@/services/index.ts";
 
 export const Route = createFileRoute("/_app/completed")({
   head: () => ({ meta: [{ title: "Completed Downloads · MediaDock" }] }),
@@ -20,12 +17,11 @@ export const Route = createFileRoute("/_app/completed")({
 
 type SortMode = "newest" | "oldest" | "size" | "title";
 
-function LibraryCard({ item, onOpen, onSave, onCopy, onRemove }: {
+function LibraryCard({ item, onOpen, onCopy, onRemove }: {
   item: LibraryItem;
-  onOpen: (path: string) => void;
-  onSave: (path: string) => void;
-  onCopy: (path: string) => void;
-  onRemove: (id: string) => void;
+  onOpen: (id: string, filename: string, path?: string) => void;
+  onCopy: (filename: string) => void;
+  onRemove: (item: LibraryItem) => void;
 }) {
   return (
     <div className="group overflow-hidden rounded-2xl border border-border bg-card/70">
@@ -48,7 +44,7 @@ function LibraryCard({ item, onOpen, onSave, onCopy, onRemove }: {
           <span>{formatBytes(item.sizeBytes)}</span>
         </div>
         <div className="flex flex-wrap gap-2 pt-1">
-          <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => onOpen(item.filePath)}>
+          <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => onOpen(item.id, item.filename, item.filePath)}>
             Open
           </Button>
           <Button
@@ -62,13 +58,10 @@ function LibraryCard({ item, onOpen, onSave, onCopy, onRemove }: {
             <FolderOpen className="size-3.5" />
             {item.kind === "video" ? "Video library" : "Audio library"}
           </Button>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onSave(item.filePath)} aria-label={`Save ${item.title} to this device`}>
-            <Download className="size-3.5" />
-          </Button>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onCopy(item.filePath)} aria-label={`Copy ${item.title} path`}>
+          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onCopy(item.filename)} aria-label={`Copy ${item.title} filename`}>
             <Copy className="size-3.5" />
           </Button>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onRemove(item.id)} aria-label={`Remove ${item.title}`}>
+          <Button type="button" variant="ghost" size="icon-sm" onClick={() => onRemove(item)} aria-label={`Delete ${item.title}`}>
             <Trash2 className="size-3.5" />
           </Button>
         </div>
@@ -82,19 +75,9 @@ function Page() {
   const [kind, setKind] = useState<"all" | "video" | "audio">("all");
   const [sortBy, setSortBy] = useState<SortMode>("newest");
   const [view, setView] = useState<ViewMode>("grid");
-  const queryClient = useQueryClient();
   const libraryQuery = useLibrary();
-  const { open, saveToDevice, copyPath } = useFileActions();
-
-  const removeItem = async (id: string) => {
-    try {
-      await getServices().library.remove(id);
-      await queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
-      toast.success("Removed from library");
-    } catch (error) {
-      toast.error(errorMessage(error, "Could not remove this media item."));
-    }
-  };
+  const { open, copyPath } = useFileActions();
+  const removeItem = useRemoveLibraryItem();
 
   const visible = useMemo(() => {
     const next = (libraryQuery.data ?? []).filter((item) => {
@@ -184,9 +167,8 @@ function Page() {
                 key={item.id}
                 item={item}
                 onOpen={open}
-                onSave={saveToDevice}
                 onCopy={copyPath}
-                onRemove={(id) => void removeItem(id)}
+                onRemove={(item) => void removeItem(item)}
               />
             ))}
           </div>
@@ -219,17 +201,14 @@ function Page() {
                   >
                     <FolderOpen className="size-3.5" />
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => open(item.filePath)}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => open(item.id, item.filename, item.filePath)}>
                     Open
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => saveToDevice(item.filePath)}>
-                    Save to device
+                  <Button type="button" variant="ghost" size="sm" onClick={() => copyPath(item.filename)}>
+                    Copy filename
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => copyPath(item.filePath)}>
-                    Copy path
-                  </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => void removeItem(item.id)}>
-                    Remove
+                  <Button type="button" variant="ghost" size="sm" onClick={() => void removeItem(item)}>
+                    Delete
                   </Button>
                 </div>
               </div>

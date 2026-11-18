@@ -1,17 +1,17 @@
 # Local Docker setup
 
-Docker Compose runs the Vite frontend and FastAPI/yt-dlp backend together. The
-`npm run dev` Vite server uses port `5174` and listens on all local network
-interfaces. Docker runs Vite on port `5174` inside its container and publishes it
-at `http://localhost:5175` on this machine and on the local network. Docker does
-not use host port `5174`, and the backend stays private to the Compose network.
-This is a local development stack, not a public production server. It does not
-change the existing Cloudflare Worker configuration or deploy anything to
-Cloudflare.
+Docker Compose builds the React app as a static SPA and runs Nginx to serve its
+files directly. Nginx publishes port `5175` on this machine and on the local
+network, serves client-side routes and assets, and forwards `/api/` requests to
+the private FastAPI/yt-dlp backend. Vite is used only during the image build;
+`npm run dev` remains available for local development on port `5174`. This
+Docker stack uses HTTP and is intended for local/LAN use, not direct public
+internet exposure. It does not change the existing Cloudflare Worker
+configuration or deploy anything to Cloudflare.
 
-Other devices on your LAN can reach the host Vite server using this computer's LAN
-IP and port `5174`, or the Docker app using the PC's LAN IP and port `5175`.
-On a phone, use `http://<PC-LAN-IP>:5175` (for example,
+Other devices on your LAN can reach the host Vite development server using this
+computer's LAN IP and port `5174`, or the Nginx-served Docker app using the PC's
+LAN IP and port `5175`. On a phone, use `http://<PC-LAN-IP>:5175` (for example,
 `http://192.168.100.83:5175`) while both devices are on the same network. If
 Windows Firewall blocks access on a trusted home network, set that Wi-Fi network
 to the Private profile in Windows and allow Docker Desktop or TCP port `5175` on
@@ -43,9 +43,37 @@ docker compose up --build -d
 docker compose ps
 ```
 
-Stop it with `docker compose down`. Downloads and the local SQLite database are
-stored in the ignored `data\` folder on your machine, so they persist between
-container restarts. Back up that folder if you want to preserve the library.
+Stop it with `docker compose down`. The browser writes completed media to the
+folder you select in **Settings**. The backend temporarily stages each download
+under the ignored `data\` folder and, when folder access is available, streams it
+to that browser folder when complete and removes its server copy while keeping
+the user's media metadata in the database. Back up the selected device folder
+to preserve your media. The backend
+uses the PostgreSQL database configured by `DATABASE_URL` in
+`backend\docker.env`; Compose does not create that database. If `DATABASE_URL`
+is unset, the backend falls back to SQLite in the persisted storage folder.
+
+Signed-in library and history metadata remains in the database; media bytes are
+kept in the selected device folder. Guest sessions are isolated per tab and are
+cleared when the tab closes (with a seven-day server-side expiry as a fallback).
+Already-saved device files are intentionally left in place when a guest tab
+closes. The browser does not expose total drive capacity/free space, so the app
+reports the size of its own tracked media rather than claiming the whole drive's
+free space.
+
+Direct folder access requires a browser with the File System Access API
+(currently Chrome or Edge) and a secure context: use `http://localhost:5175` on
+the Docker host, or serve the app over HTTPS for access from another device.
+The plain HTTP LAN address (`http://<PC-LAN-IP>:5175`) can serve the app, but
+browsers do not permit this folder API there. When folder access is supported,
+choose the folder in Settings before starting a download; the app asks for
+permission and automatically transfers each completed download. If folder
+access is unavailable, the app sends completed files through the browser's
+standard download flow instead. The browser chooses the download location, and
+whether it shows a Save As prompt depends on the browser's "Ask where to save
+each file" preference (Chrome: `chrome://settings/downloads`; Edge:
+`edge://settings/downloads`). The app keeps its staged server copy because it
+cannot confirm that the browser saved the file.
 
 Backend settings are read from `backend\docker.env`, mounted read-only at runtime
 as a Docker secret. They are not copied into either image or passed as container
@@ -53,9 +81,10 @@ environment variables. Docker build contexts exclude local environment files,
 dependencies, and downloaded media. A Docker host administrator can still access
 the mounted source file, so keep the host secure and do not commit it.
 
-The frontend only receives the Supabase URL and publishable/anon key, which are
-intended to be visible to browsers. `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`,
-`SUPABASE_JWT_SECRET`, and `SECRET_KEY` must remain in the backend settings file.
+The frontend build only receives the Supabase URL and publishable/anon key,
+which are intended to be visible to browsers. `SUPABASE_SERVICE_ROLE_KEY`,
+`DATABASE_URL`, `SUPABASE_JWT_SECRET`, and `SECRET_KEY` must remain in the
+backend settings file.
 
 ## Vite template notes
 

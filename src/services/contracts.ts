@@ -88,12 +88,13 @@ export type StatsService = {
 
 /** Local filesystem bridge. A desktop shell (Tauri, Electron, native) implements this. */
 export type FileSystemService = {
-  openFile: (path: string) => Promise<void>;
-  saveFileToDevice: (path: string) => Promise<void>;
-  copyPath: (path: string) => Promise<void>;
-  /** Opens a native folder picker. Resolves null when dismissed. */
-  chooseFolder: (current: string) => Promise<string | null>;
-  fileExists: (path: string) => Promise<boolean>;
+  openFile: (itemId: string, filename: string, serverPath?: string) => Promise<void>;
+  downloadFile: (itemId: string, filename: string, serverPath?: string) => Promise<void>;
+  removeFile: (itemId: string, filename: string) => Promise<void>;
+  copyPath: (filename: string) => Promise<void>;
+  saveCompletedFile: (jobId: string, filename: string, serverPath: string, destination?: string) => Promise<string>;
+  chooseFolder: () => Promise<string | null>;
+  getFolderName: () => Promise<string | null>;
 };
 
 export type SettingsService = {

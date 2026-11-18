@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { errorMessage } from "@/services/errors.ts";
-import { getServices, type LibraryQuery } from "@/services/index.ts";
+import { getServices, type HistoryEntry, type LibraryItem, type LibraryQuery } from "@/services/index.ts";
 
 /**
  * Read hooks over the service layer. Data loads in the browser (the mock
@@ -57,24 +57,77 @@ export function useSettings() {
 /** Filesystem actions with consistent feedback. */
 export function useFileActions() {
   const { fileSystem } = getServices();
-  const wrap = (fn: (path: string) => Promise<void>, success: string, fallback: string) => async (path: string) => {
-    try {
-      await fn(path);
-      toast.success(success, { description: path });
-    } catch (error) {
-      toast.error(errorMessage(error, fallback));
-    }
-  };
+  const queryClient = useQueryClient();
   return {
-    open: wrap(fileSystem.openFile, "Opening file", "Could not open the file."),
-    saveToDevice: async (path: string) => {
+    open: async (itemId: string, filename: string, serverPath?: string) => {
       try {
-        await fileSystem.saveFileToDevice(path);
-        toast.success("Device download started", { description: "Check your browser's downloads." });
+        await fileSystem.openFile(itemId, filename, serverPath);
       } catch (error) {
-        toast.error(errorMessage(error, "Could not save this media file."));
+        toast.error(errorMessage(error, "Could not open the media file."));
       }
     },
-    copyPath: wrap(fileSystem.copyPath, "File path copied", "Could not copy the path."),
+    download: async (itemId: string, filename: string, serverPath?: string) => {
+      try {
+        await fileSystem.downloadFile(itemId, filename, serverPath);
+        await queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
+        await queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
+        await queryClient.invalidateQueries({ queryKey: ["astrid", "overview"] });
+        toast.success("Download started", { description: filename });
+      } catch (error) {
+        toast.error(errorMessage(error, "Could not download the media file."));
+      }
+    },
+    removeFile: async (itemId: string, filename: string) => {
+      try {
+        await fileSystem.removeFile(itemId, filename);
+      } catch (error) {
+        toast.error(errorMessage(error, "Could not remove the media file from your device."));
+        throw error;
+      }
+    },
+    copyPath: async (filename: string) => {
+      try {
+        await fileSystem.copyPath(filename);
+        toast.success("Filename copied", { description: filename });
+      } catch (error) {
+        toast.error(errorMessage(error, "Could not copy the filename."));
+      }
+    },
+  };
+}
+
+export function useRemoveLibraryItem() {
+  const queryClient = useQueryClient();
+  return async (item: LibraryItem) => {
+    try {
+      if (!item.filePath) {
+        await getServices().fileSystem.removeFile(item.id, item.filename);
+      }
+      await getServices().library.remove(item.id);
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "overview"] });
+      toast.success("Media deleted");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not delete this media item."));
+    }
+  };
+}
+
+export function useRemoveHistoryEntry() {
+  const queryClient = useQueryClient();
+  return async (entry: HistoryEntry) => {
+    try {
+      if (entry.libraryId && entry.filename && !entry.filePath) {
+        await getServices().fileSystem.removeFile(entry.libraryId, entry.filename);
+      }
+      await getServices().history.remove(entry.id);
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "overview"] });
+      toast.success("History entry deleted");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not delete this history entry."));
+    }
   };
 }

@@ -141,7 +141,7 @@ export default function HistorySettingsSidebar({ open, onToggle }: { open: boole
           <div className="flex-1 space-y-3 overflow-y-auto p-3">
             <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/35 p-3">
               <div className="text-[10px] uppercase tracking-[0.12em] text-sidebar-foreground/55">Download location</div>
-              <div className="mt-2 truncate text-sm font-medium">{settings?.general.downloadLocation ?? "~/Downloads/MediaDock"}</div>
+              <div className="mt-2 truncate text-sm font-medium">Choose a device folder in Settings</div>
             </div>
 
             <div className="space-y-2 rounded-xl border border-sidebar-border bg-sidebar-accent/25 p-3">

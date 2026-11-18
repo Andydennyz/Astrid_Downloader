@@ -16,6 +16,7 @@ from app.api.media import (
 from app.core.security import AuthUser
 from app.database.base import Base
 from app.database.models import DownloadJob, HistoryItem, LibraryItem, User
+from app.database.connection import cleanup_expired_guest_sessions
 from app.schemas.media import DownloadRequestSchema
 import pytest
 
@@ -24,6 +25,7 @@ from app.services.storage import (
     cleanup_partial_output,
     resolve_destination,
     safe_filename,
+    user_storage_root,
 )
 
 
@@ -161,6 +163,79 @@ async def test_overview_reports_user_storage_and_quota_without_multiplying_usage
     assert overview["storageRemainingBytes"] == 750
     assert overview["storageDiskFreeBytes"] == 5000
     assert sum(point["video"] for point in overview["activity"]) == 2
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_expired_guest_cleanup_removes_metadata_and_backend_media(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine, sessions = await _make_sessions(tmp_path / "expired-guest.db")
+    storage_root_path = tmp_path / "storage"
+    monkeypatch.setattr("app.services.storage.settings.storage_path", str(storage_root_path))
+    monkeypatch.setattr("app.database.connection.SessionLocal", sessions)
+    guest_id = "guest-expired"
+    media_file = user_storage_root(guest_id) / "Downloads" / "expired.mp4"
+    media_file.parent.mkdir(parents=True)
+    media_file.write_bytes(b"expired media")
+
+    async with sessions() as session:
+        session.add(
+            User(
+                id=guest_id,
+                created_at=datetime.now(timezone.utc) - timedelta(days=8),
+            )
+        )
+        session.add(
+            DownloadJob(
+                id="expired-job",
+                user_id=guest_id,
+                source_url="https://www.youtube.com/watch?v=expired",
+                title="Expired",
+                creator="Creator",
+                destination="Downloads",
+                status="completed",
+                file_path=str(media_file),
+            )
+        )
+        session.add(
+            LibraryItem(
+                id="lib_expired-job",
+                user_id=guest_id,
+                title="Expired",
+                creator="Creator",
+                filename=media_file.name,
+                source_url="https://www.youtube.com/watch?v=expired",
+                file_path=str(media_file),
+                kind="video",
+                extension="mp4",
+                quality_label="best",
+            )
+        )
+        session.add(
+            HistoryItem(
+                id="hist_expired-job",
+                user_id=guest_id,
+                title="Expired",
+                creator="Creator",
+                source_url="https://www.youtube.com/watch?v=expired",
+                kind="video",
+                status="completed",
+                extension="mp4",
+                quality_label="best",
+                file_path=str(media_file),
+            )
+        )
+        await session.commit()
+
+    await cleanup_expired_guest_sessions()
+
+    assert not media_file.exists()
+    async with sessions() as session:
+        assert await session.get(User, guest_id) is None
+        assert await session.get(DownloadJob, "expired-job") is None
+        assert await session.get(LibraryItem, "lib_expired-job") is None
+        assert await session.get(HistoryItem, "hist_expired-job") is None
     await engine.dispose()
 
 

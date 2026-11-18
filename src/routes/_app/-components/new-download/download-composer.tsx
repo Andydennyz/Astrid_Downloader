@@ -28,7 +28,6 @@ export default function DownloadComposer({
   const { start } = useDownloads();
   const [selection, setSelection] = useState<FormatSelection>(() => initialSelection(info, settings));
   const [filename, setFilename] = useState("");
-  const [folder, setFolder] = useState(settings.general.downloadLocation);
   const [starting, setStarting] = useState(false);
   const [started, setStarted] = useState<DownloadJob | null>(null);
 
@@ -39,7 +38,7 @@ export default function DownloadComposer({
     quality: resolved.qualityLabel,
     platform: info.platform,
   });
-  const finalFolder = outputFolder(folder, resolved.kind, info.creator, settings.general);
+  const finalFolder = outputFolder(".", resolved.kind, info.creator, settings.general);
 
   const handleStart = async () => {
     setStarting(true);
@@ -108,9 +107,7 @@ export default function DownloadComposer({
             filename={filename}
             defaultFilename={defaultFilename}
             onFilenameChange={setFilename}
-            folder={folder}
-            finalFolder={finalFolder}
-            onFolderChange={setFolder}
+            finalFolder="Selected folder or browser downloads"
             general={settings.general}
             starting={starting}
             onStart={() => void handleStart()}

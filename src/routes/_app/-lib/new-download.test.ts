@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { renderFilenameTemplate, sanitizeFilename } from "@/services/filename.ts";
 import { resolveSelection } from "@/services/format-selection.ts";
 import { DEFAULT_SETTINGS } from "@/services/settings-storage.ts";
-import type { FormatOption, MediaInfo } from "@/services/index.ts";
-import { clampQuality, initialSelection, isQualityAvailable, outputFolder } from "./new-download.ts";
+import type { FormatOption, LibraryItem, MediaInfo } from "@/services/index.ts";
+import { buildRedownloadRequest, clampQuality, getHttpSourceUrl, initialSelection, isQualityAvailable, outputFolder } from "./new-download.ts";
 
 const video = (height: number): FormatOption => ({
   formatId: `v${height}`,
@@ -104,5 +104,50 @@ describe("outputFolder", () => {
     expect(
       outputFolder("~/Downloads/", "audio", "Lune: Collective", { organizeByType: true, organizeByCreator: true }),
     ).toBe("~/Downloads/Audio/Lune Collective");
+  });
+});
+
+describe("library redownloads", () => {
+  const item: LibraryItem = {
+    id: "lib-1",
+    kind: "audio",
+    filename: "mix.mp3",
+    title: "Mix",
+    creator: "DJ",
+    thumbnailUrl: "https://example.com/thumb.jpg",
+    extension: "mp3",
+    qualityLabel: "320 kbps",
+    durationSec: 120,
+    sizeBytes: 1024,
+    downloadedAt: "2026-01-01T00:00:00.000Z",
+    filePath: "",
+    sourceUrl: "https://example.com/mix",
+    platform: "other",
+  };
+
+  it("reuses saved source metadata and default settings for a one-click download", () => {
+    expect(buildRedownloadRequest(item, DEFAULT_SETTINGS)).toMatchObject({
+      sourceUrl: item.sourceUrl,
+      title: item.title,
+      creator: item.creator,
+      thumbnailUrl: item.thumbnailUrl,
+      durationSec: item.durationSec,
+      selection: {
+        mode: "audio",
+        audioFormat: DEFAULT_SETTINGS.general.defaultAudioFormat,
+      },
+    });
+  });
+
+  it("requests a video-plus-audio download for video library items", () => {
+    expect(
+      buildRedownloadRequest({ ...item, kind: "video" }, DEFAULT_SETTINGS).selection.mode,
+    ).toBe("video+audio");
+  });
+
+  it("allows source links only for absolute HTTP(S) URLs", () => {
+    expect(getHttpSourceUrl("https://example.com/media")).toBe("https://example.com/media");
+    expect(getHttpSourceUrl("javascript:alert(1)")).toBeNull();
+    expect(getHttpSourceUrl("not a url")).toBeNull();
   });
 });

@@ -1,25 +1,20 @@
-import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, Download, FileVideo, FolderOpen, HardDrive, Music2, RotateCcw } from "lucide-react";
+import { AlertTriangle, Download, FileVideo, Music2 } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/layout.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatBytes } from "@/lib/format.ts";
-import { errorMessage } from "@/services/errors.ts";
 import type { ResolvedSelection } from "@/services/format-selection.ts";
-import { getServices, type AppSettings } from "@/services/index.ts";
-import { toast } from "sonner";
+import type { AppSettings } from "@/services/index.ts";
 
 type SaveOptionsProps = {
   resolved: ResolvedSelection;
   filename: string;
   defaultFilename: string;
   onFilenameChange: (value: string) => void;
-  folder: string;
   finalFolder: string;
-  onFolderChange: (value: string) => void;
   general: AppSettings["general"];
   starting: boolean;
   onStart: () => void;
@@ -40,32 +35,17 @@ export default function SaveOptions({
   filename,
   defaultFilename,
   onFilenameChange,
-  folder,
   finalFolder,
-  onFolderChange,
   general,
   starting,
   onStart,
 }: SaveOptionsProps) {
-  const [choosing, setChoosing] = useState(false);
   const shownName = filename.trim() || defaultFilename;
   const FileIcon = resolved.kind === "audio" ? Music2 : FileVideo;
 
-  const chooseFolder = async () => {
-    setChoosing(true);
-    try {
-      const next = await getServices().fileSystem.chooseFolder(folder);
-      if (next) onFolderChange(next);
-    } catch (error) {
-      toast.error(errorMessage(error, "Could not open the folder picker."));
-    } finally {
-      setChoosing(false);
-    }
-  };
-
   return (
     <Panel className="flex flex-col">
-      <PanelHeader title="Save as" description="Where and how the file is written" />
+      <PanelHeader title="Save as" description="How the file is named and formatted" />
       <div className="flex flex-col gap-4 px-5 pb-5">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="filename">File name</Label>
@@ -85,23 +65,10 @@ export default function SaveOptions({
 
         <div className="flex flex-col gap-1.5">
           <Label>Destination</Label>
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border bg-muted/30 px-3">
-              <HardDrive className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate font-mono text-[12px]" title={folder}>
-                {folder}
-              </span>
-            </div>
-            <Button variant="secondary" className="h-10 gap-1.5" onClick={() => void chooseFolder()} disabled={choosing}>
-              {choosing ? <Spinner /> : <FolderOpen />}
-              Change
-            </Button>
-            {folder !== general.downloadLocation && (
-              <Button variant="ghost" size="icon" className="size-10" aria-label="Reset to default folder" onClick={() => onFolderChange(general.downloadLocation)}>
-                <RotateCcw />
-              </Button>
-            )}
-          </div>
+          <p className="rounded-lg border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
+            Completed media is saved to a selected folder when supported. Otherwise, your browser handles the download; its "Ask where to save each file" preference controls whether a location prompt appears. Choose a folder in{" "}
+            <Link to="/settings" className="text-primary hover:underline">Settings</Link>.
+          </p>
           {(general.organizeByType || general.organizeByCreator) && (
             <p className="text-xs text-muted-foreground">
               Sorted into subfolders by {[general.organizeByType && "type", general.organizeByCreator && "creator"].filter(Boolean).join(" and ")}.{" "}

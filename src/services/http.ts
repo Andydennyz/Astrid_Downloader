@@ -11,6 +11,14 @@ import { getSupabaseSession } from "../lib/supabase.ts";
 import { getGuestToken } from "../lib/guest.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { ServiceError } from "./errors.ts";
+import {
+  BROWSER_DOWNLOADS_MODE,
+  chooseDownloadDirectory,
+  getDownloadDirectoryName,
+  readDeviceFile,
+  removeDeviceFile,
+  writeDeviceFile,
+} from "./device-storage.ts";
 import { createLocalSettingsService } from "./mock/other.ts";
 import type {
   DownloadEvent,
@@ -222,6 +230,8 @@ function normalizeHistoryEntry(raw: Record<string, unknown>): HistoryEntry {
     sizeBytes:
       typeof raw["sizeBytes"] === "number" ? raw["sizeBytes"] : undefined,
     filePath: typeof raw["filePath"] === "string" ? raw["filePath"] : undefined,
+    libraryId: typeof raw["libraryId"] === "string" ? raw["libraryId"] : undefined,
+    filename: typeof raw["filename"] === "string" ? raw["filename"] : undefined,
     error: typeof raw["error"] === "string" ? raw["error"] : undefined,
     timestamp: String(raw["timestamp"] ?? new Date().toISOString()),
   };
@@ -469,6 +479,145 @@ function createHttpStatsService(): StatsService {
   };
 }
 
+const MEDIA_MIME_TYPES: Record<string, string> = {
+  aac: "audio/aac",
+  flac: "audio/flac",
+  m4a: "audio/mp4",
+  mp3: "audio/mpeg",
+  oga: "audio/ogg",
+  ogg: "audio/ogg",
+  opus: "audio/ogg",
+  wav: "audio/wav",
+  webm: "video/webm",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  mkv: "video/x-matroska",
+  ogv: "video/ogg",
+};
+
+function mediaMimeType(filename: string, fallback = "") {
+  const extension = filename.split(".").pop()?.toLowerCase() ?? "";
+  return MEDIA_MIME_TYPES[extension] ?? (fallback || "application/octet-stream");
+}
+
+function renderMediaPlayer(
+  preview: Window,
+  source: string | File,
+  filename: string,
+  downloadUrl?: string,
+) {
+  const isLocalFile = typeof source !== "string";
+  const sourceUrl = isLocalFile
+    ? URL.createObjectURL(
+        new Blob([source], { type: mediaMimeType(filename, source.type) }),
+      )
+    : source;
+  if (isLocalFile) {
+    preview.addEventListener(
+      "pagehide",
+      () => URL.revokeObjectURL(sourceUrl),
+      { once: true },
+    );
+  }
+
+  const document = preview.document;
+  document.title = filename;
+  document.documentElement.style.cssText =
+    "background:#090d10;color:#f4f4f5;font:14px system-ui,sans-serif";
+  document.body.style.cssText =
+    "box-sizing:border-box;min-height:100vh;margin:0;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px";
+
+  const title = document.createElement("h1");
+  title.textContent = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
+  title.style.cssText = "max-width:100%;margin:0;overflow-wrap:anywhere;font-size:16px";
+
+  const audio = mediaMimeType(filename).startsWith("audio/");
+  const player = document.createElement(audio ? "audio" : "video");
+  player.controls = true;
+  player.autoplay = true;
+  player.src = sourceUrl;
+  player.style.cssText = audio
+    ? "width:min(720px,100%)"
+    : "width:min(1280px,100%);max-height:calc(100vh - 140px);background:#000";
+  if (!audio && player instanceof HTMLVideoElement) player.playsInline = true;
+
+  const status = document.createElement("p");
+  status.textContent = "If playback does not start, use the player controls or download the file.";
+  status.style.cssText = "margin:0;color:#a1a1aa;text-align:center";
+  player.addEventListener("error", () => {
+    status.textContent =
+      "This browser cannot play this media format. Download the file or try a compatible media player.";
+  });
+  const download = document.createElement("a");
+  download.href = downloadUrl ?? sourceUrl;
+  download.download = title.textContent ?? filename;
+  download.textContent = "Download media";
+  download.style.cssText = "color:#a7f3d0;text-decoration:underline";
+
+  document.body.replaceChildren(title, player, status, download);
+}
+
+function clickDownloadLink(href: string, filename: string) {
+  if (typeof document === "undefined") {
+    throw new ServiceError("UNAVAILABLE", "Files can only be downloaded from a browser.");
+  }
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
+  link.hidden = true;
+  document.body.append(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+  }
+}
+
+async function saveCompletedFileToDevice(
+  jobId: string,
+  filename: string,
+  serverPath: string,
+  destination?: string,
+): Promise<string> {
+  if (typeof document === "undefined") {
+    throw new ServiceError("UNAVAILABLE", "Files can only be saved from a browser.");
+  }
+  const { ticket } = await request<{ ticket: string }>(
+    "files/download-session",
+    {
+      method: "POST",
+      body: JSON.stringify({ path: serverPath }),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  const downloadUrl = urlFor(`files/open/${encodeURIComponent(ticket)}`);
+  if (await getDownloadDirectoryName() === BROWSER_DOWNLOADS_MODE) {
+    clickDownloadLink(downloadUrl, filename);
+    return filename;
+  }
+
+  const response = await fetch(downloadUrl);
+  if (!response.ok || !response.body) {
+    throw new ServiceError(
+      "UNAVAILABLE",
+      `The backend could not stream this media file (${response.status}).`,
+    );
+  }
+  const actualFilename = await writeDeviceFile(
+    jobId,
+    filename,
+    response.body,
+    destination,
+  );
+  await request(`downloads/${encodeURIComponent(jobId)}/device-saved`, {
+    method: "POST",
+    body: JSON.stringify({ filename: actualFilename }),
+    headers: { "Content-Type": "application/json" },
+  });
+  return actualFilename;
+}
+
 export function createHttpServices(): AppServices {
   return {
     media: createHttpMediaService(),
@@ -508,7 +657,7 @@ export function createHttpServices(): AppServices {
     history: createHttpHistoryService(),
     stats: createHttpStatsService(),
     fileSystem: {
-      openFile: async (path) => {
+      openFile: async (_itemId, filename, serverPath) => {
         if (typeof window === "undefined") {
           throw new ServiceError(
             "UNAVAILABLE",
@@ -524,49 +673,92 @@ export function createHttpServices(): AppServices {
         }
         preview.opener = null;
         try {
+          if (!serverPath) {
+            const file = await readDeviceFile(filename);
+            if (!file) {
+              throw new ServiceError(
+                "NOT_FOUND",
+                "This media file is not in the selected download folder. Use Download again to save it to your device.",
+              );
+            }
+            renderMediaPlayer(preview, file, filename);
+            return;
+          }
+
           const { ticket } = await request<{ ticket: string }>(
             "files/open-session",
             {
               method: "POST",
-              body: JSON.stringify({ path }),
+              body: JSON.stringify({ path: serverPath }),
               headers: { "Content-Type": "application/json" },
             },
           );
-          preview.location.replace(
+          const { ticket: downloadTicket } = await request<{ ticket: string }>(
+            "files/download-session",
+            {
+              method: "POST",
+              body: JSON.stringify({ path: serverPath }),
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+          renderMediaPlayer(
+            preview,
             urlFor(`files/open/${encodeURIComponent(ticket)}`),
+            filename,
+            urlFor(`files/open/${encodeURIComponent(downloadTicket)}`),
           );
         } catch (error) {
           preview.close();
+          if (error instanceof ServiceError && error.code === "NOT_FOUND") {
+            if (!serverPath) throw error;
+            throw new ServiceError(
+              "NOT_FOUND",
+              "This media file is no longer available. Use Download again to save it to your device.",
+            );
+          }
           throw error;
         }
       },
-      saveFileToDevice: async (path) => {
-        if (typeof document === "undefined") {
+      downloadFile: async (itemId, filename, serverPath) => {
+        if (serverPath) {
+          const jobId = itemId.startsWith("lib_") ? itemId.slice(4) : itemId;
+          await saveCompletedFileToDevice(jobId, filename, serverPath);
+          return;
+        }
+        if (typeof window === "undefined") {
           throw new ServiceError(
             "UNAVAILABLE",
-            "Files can only be saved from a browser.",
+            "Files can only be downloaded from a browser.",
           );
         }
-        const { ticket } = await request<{ ticket: string }>(
-          "files/download-session",
-          {
-            method: "POST",
-            body: JSON.stringify({ path }),
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-        const link = document.createElement("a");
-        link.href = urlFor(`files/open/${encodeURIComponent(ticket)}`);
-        link.download = "";
-        link.rel = "noopener";
-        link.hidden = true;
-        document.body.append(link);
-        link.click();
-        link.remove();
-      },
-      copyPath: async (path) => {
+        const file = await readDeviceFile(filename);
+        if (!file) {
+          throw new ServiceError(
+            "NOT_FOUND",
+            "This media file is not in the selected download folder. Use Download again to save it to your device.",
+          );
+        }
+        const downloadUrl = URL.createObjectURL(file);
         try {
-          await writeClipboardText(path);
+          clickDownloadLink(downloadUrl, filename);
+        } finally {
+          window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+        }
+      },
+      saveCompletedFile: async (jobId, filename, serverPath, destination) => {
+        return saveCompletedFileToDevice(
+          jobId,
+          filename,
+          serverPath,
+          destination,
+        );
+      },
+      removeFile: async (itemId, filename) => {
+        await removeDeviceFile(itemId, filename);
+      },
+      copyPath: async (filename) => {
+        try {
+          await writeClipboardText(filename);
         } catch (error) {
           throw new ServiceError(
             "CLIPBOARD_UNAVAILABLE",
@@ -577,16 +769,10 @@ export function createHttpServices(): AppServices {
         }
       },
       chooseFolder: async () => {
-        throw new ServiceError(
-          "UNAVAILABLE",
-          "Choosing a folder is not available in the browser yet.",
-        );
+        return chooseDownloadDirectory();
       },
-      fileExists: async () => {
-        throw new ServiceError(
-          "UNAVAILABLE",
-          "Checking backend-stored files is not available in the browser yet.",
-        );
+      getFolderName: async () => {
+        return getDownloadDirectoryName();
       },
     },
     settings: createLocalSettingsService() as SettingsService,

@@ -8,6 +8,7 @@ const originalRandomUUID = Object.getOwnPropertyDescriptor(
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -17,6 +18,7 @@ afterEach(() => {
     Reflect.deleteProperty(window.crypto, "randomUUID");
   }
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe("guest token creation", () => {
@@ -31,11 +33,12 @@ describe("guest token creation", () => {
     expect(token).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
-    expect(window.localStorage.getItem("astrid-guest-token")).toBe(token);
+    expect(window.sessionStorage.getItem("astrid-guest-token")).toBe(token);
+    expect(window.localStorage.getItem("astrid-guest-token")).toBeNull();
   });
 
-  it("reuses a valid guest token for the current browser", () => {
-    window.localStorage.setItem(
+  it("reuses a valid guest token for the current tab", () => {
+    window.sessionStorage.setItem(
       "astrid-guest-token",
       "123e4567-e89b-42d3-a456-426614174000",
     );

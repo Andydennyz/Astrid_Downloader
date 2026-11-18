@@ -142,6 +142,7 @@ export type LibraryItem = {
   durationSec: number;
   sizeBytes: number;
   downloadedAt: string;
+  /** Empty after the media file has been transferred to the user's device. */
   filePath: string;
   sourceUrl: string;
   platform: Platform;
@@ -164,6 +165,8 @@ export type HistoryEntry = {
   sizeBytes?: number;
   /** Present for completed downloads that are still in the library. */
   filePath?: string;
+  libraryId?: string;
+  filename?: string;
   error?: string;
   timestamp: string;
 };

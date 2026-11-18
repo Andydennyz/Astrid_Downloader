@@ -591,6 +591,7 @@ class DownloadWorker:
             result = await session.execute(select(DownloadJob).where(DownloadJob.id == job_id))
             job = result.scalar_one_or_none()
             if job is None:
+                Path(output_path).unlink(missing_ok=True)
                 return
 
             job.status = "completed"
@@ -666,7 +667,8 @@ class DownloadWorker:
         async with SessionLocal() as session:
             result = await session.execute(
                 select(func.coalesce(func.sum(LibraryItem.size_bytes), 0)).where(
-                    LibraryItem.user_id == user_id
+                    LibraryItem.user_id == user_id,
+                    LibraryItem.file_path != "",
                 )
             )
             return int(result.scalar_one())

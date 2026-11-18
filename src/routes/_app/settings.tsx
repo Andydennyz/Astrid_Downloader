@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageContainer, Panel } from "@/components/layout.tsx";
@@ -7,7 +8,9 @@ import { Switch } from "@/components/ui/switch.tsx";
 import { SETTINGS_QUERY_KEY, useSettings } from "@/hooks/use-media-data.ts";
 import { getServices, type AppSettings } from "@/services/index.ts";
 import { errorMessage } from "@/services/errors.ts";
+import { BROWSER_DOWNLOADS_MODE } from "@/services/device-storage.ts";
 import { toast } from "sonner";
+import { FolderOpen } from "lucide-react";
 
 export const Route = createFileRoute("/_app/settings")({
   head: () => ({ meta: [{ title: "Settings · MediaDock" }] }),
@@ -30,6 +33,31 @@ function Page() {
   const queryClient = useQueryClient();
   const settingsQuery = useSettings();
   const settings = settingsQuery.data;
+  const [deviceFolder, setDeviceFolder] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getServices().fileSystem.getFolderName()
+      .then(setDeviceFolder)
+      .catch((error: unknown) => toast.error(errorMessage(error, "Could not read the selected download folder.")));
+  }, []);
+
+  const chooseDeviceFolder = async () => {
+    try {
+      const selected = await getServices().fileSystem.chooseFolder();
+      if (selected) {
+        setDeviceFolder(selected);
+        if (selected === BROWSER_DOWNLOADS_MODE) {
+          toast.info("Folder selection is unavailable", {
+            description: "Downloads will use your browser's standard download location.",
+          });
+        } else {
+          toast.success("Download folder selected", { description: selected });
+        }
+      }
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not select a download folder."));
+    }
+  };
 
   const update = async (updater: (current: AppSettings) => AppSettings) => {
     if (!settings) return;
@@ -81,12 +109,29 @@ function Page() {
             <h3 className="text-lg font-semibold">General</h3>
           </div>
           <div className="space-y-4">
-            <SettingsRow label="Download location" hint="A folder under the backend STORAGE_PATH; use a relative folder.">
-              <input
-                value={settings.general.downloadLocation}
-                onChange={(event) => void update((current) => ({ ...current, general: { ...current.general, downloadLocation: event.target.value } }))}
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm focus:border-primary"
-              />
+            <SettingsRow label="Download folder on this device" hint="Choose a folder in a supported browser over HTTPS or localhost. Otherwise, downloads still go to your browser's standard Downloads location.">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground" title={deviceFolder ?? undefined}>
+                  {deviceFolder === BROWSER_DOWNLOADS_MODE
+                    ? "Browser's standard download location"
+                    : deviceFolder ?? "No folder selected"}
+                </span>
+                {deviceFolder === BROWSER_DOWNLOADS_MODE ? (
+                  <span className="shrink-0 rounded-lg border px-2.5 py-2 text-xs text-muted-foreground">
+                    Browser downloads
+                  </span>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void chooseDeviceFolder()}
+                  >
+                    <FolderOpen className="mr-1 size-3.5" />
+                    {deviceFolder ? "Change" : "Choose"}
+                  </Button>
+                )}
+              </div>
             </SettingsRow>
             <SettingsRow label="Default video quality" hint="Chosen when you start a fresh download.">
               <select

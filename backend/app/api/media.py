@@ -14,9 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import AuthUser, get_current_user_or_guest
 from app.core.config import settings
 from app.database.connection import get_db
-from app.database.models import DownloadJob, HistoryItem, LibraryItem
+from app.database.models import DownloadJob, HistoryItem, LibraryItem, User
 from app.repositories.user_repository import UserRepository
-from app.schemas.media import DownloadJobResponse, DownloadRequestSchema, FileOpenSessionRequest, MediaAnalyzeRequest, MediaInfoResponse
+from app.schemas.media import DeviceSavedRequest, DownloadJobResponse, DownloadRequestSchema, FileOpenSessionRequest, MediaAnalyzeRequest, MediaInfoResponse
 from app.services.downloader import queue_download_job, stop_download_job
 from app.services.file_access import create_file_access_ticket, read_file_access_ticket
 from app.services.media_analyzer import (
@@ -137,13 +137,16 @@ def _serialize_library(item: LibraryItem) -> dict:
         "durationSec": item.duration_sec,
         "sizeBytes": item.size_bytes,
         "downloadedAt": item.downloaded_at.isoformat(),
-        "filePath": item.file_path,
+        "filePath": item.file_path or None,
         "sourceUrl": item.source_url,
         "platform": "other",
     }
 
 
-def _serialize_history(item: HistoryItem) -> dict:
+def _serialize_history(
+    item: HistoryItem,
+    library_item: LibraryItem | None = None,
+) -> dict:
     return {
         "id": item.id,
         "title": item.title,
@@ -158,6 +161,8 @@ def _serialize_history(item: HistoryItem) -> dict:
         "qualityLabel": item.quality_label,
         "sizeBytes": item.size_bytes,
         "filePath": item.file_path,
+        "libraryId": library_item.id if library_item is not None else None,
+        "filename": library_item.filename if library_item is not None else None,
         "error": item.error,
         "timestamp": item.timestamp.isoformat(),
     }
@@ -226,7 +231,11 @@ async def start_download(
             )
 
     user_repo = UserRepository(db)
-    await user_repo.get_or_create(current_user.user_id, current_user.email)
+    await user_repo.get_or_create(
+        current_user.user_id,
+        current_user.email,
+        touch_guest_session=current_user.role == "guest",
+    )
     job_id = str(uuid4())
     selection = payload.selection or {}
     mode = str(selection.get("mode") or "video+audio")
@@ -392,6 +401,50 @@ async def remove_download(job_id: str, current_user: AuthUser = Depends(get_curr
     return {"status": "removed", "id": job_id}
 
 
+@router.post("/downloads/{job_id}/device-saved")
+async def mark_download_saved_to_device(
+    job_id: str,
+    payload: DeviceSavedRequest,
+    current_user: AuthUser = Depends(get_current_user_or_guest),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    job = await db.scalar(
+        select(DownloadJob).where(
+            DownloadJob.id == job_id,
+            DownloadJob.user_id == current_user.user_id,
+        )
+    )
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download job not found.")
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only completed downloads can be saved to the device.",
+        )
+
+    path = job.file_path
+    if path:
+        try:
+            managed_path = _resolve_managed_path(path, current_user.user_id)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The download file is outside the user's managed storage directory.",
+            ) from exc
+        managed_path.unlink(missing_ok=True)
+
+    job.file_path = None
+    library = await db.get(LibraryItem, f"lib_{job.id}")
+    if library is not None and library.user_id == current_user.user_id:
+        library.file_path = ""
+        library.filename = payload.filename
+    history = await db.get(HistoryItem, f"hist_{job.id}")
+    if history is not None and history.user_id == current_user.user_id:
+        history.file_path = None
+    await db.commit()
+    return {"status": "saved", "id": job_id, "filename": payload.filename}
+
+
 async def _resolve_owned_media_file(path: str, user_id: str, db: AsyncSession) -> Path:
     owned = False
     for model in (LibraryItem, HistoryItem, DownloadJob):
@@ -404,15 +457,36 @@ async def _resolve_owned_media_file(path: str, user_id: str, db: AsyncSession) -
     if not owned:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found.")
 
-    user_root = user_storage_root(user_id)
     try:
-        resolved_path = Path(path).resolve(strict=True)
-        resolved_path.relative_to(user_root)
+        resolved_path = _resolve_managed_path(path, user_id, strict=True)
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found.") from exc
     if not resolved_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found.")
     return resolved_path
+
+
+def _resolve_managed_path(path: str, user_id: str, strict: bool = False) -> Path:
+    resolved_path = Path(path).resolve(strict=strict)
+    resolved_path.relative_to(user_storage_root(user_id))
+    return resolved_path
+
+
+async def _remove_library_record(
+    item: LibraryItem,
+    user_id: str,
+    db: AsyncSession,
+) -> None:
+    if item.file_path:
+        try:
+            path = _resolve_managed_path(item.file_path, user_id)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The library file is outside the user's managed storage directory.",
+            ) from exc
+        path.unlink(missing_ok=True)
+    await db.delete(item)
 
 
 @router.post("/files/open-session")
@@ -490,18 +564,14 @@ async def remove_library_item(library_id: str, current_user: AuthUser = Depends(
     item = result.scalar_one_or_none()
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Library item not found.")
-    file_path = Path(item.file_path)
-    user_root = user_storage_root(current_user.user_id)
-    try:
-        resolved_path = file_path.resolve()
-        resolved_path.relative_to(user_root)
-    except (OSError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The library file is outside the user's managed storage directory.",
-        ) from exc
-    file_path.unlink(missing_ok=True)
-    await db.delete(item)
+    await _remove_library_record(item, current_user.user_id, db)
+    if library_id.startswith("lib_"):
+        linked_history = await db.get(HistoryItem, f"hist_{library_id[4:]}")
+        if linked_history is not None and linked_history.user_id == current_user.user_id:
+            await db.delete(linked_history)
+        linked_job = await db.get(DownloadJob, library_id[4:])
+        if linked_job is not None and linked_job.user_id == current_user.user_id:
+            linked_job.file_path = None
     await db.commit()
     return {"status": "removed", "id": library_id}
 
@@ -511,7 +581,30 @@ async def list_history(current_user: AuthUser = Depends(get_current_user_or_gues
     result = await db.execute(
         select(HistoryItem).where(HistoryItem.user_id == current_user.user_id).order_by(HistoryItem.timestamp.desc())
     )
-    return [_serialize_history(item) for item in result.scalars().all()]
+    items = result.scalars().all()
+    library_ids = [
+        f"lib_{item.id[5:]}"
+        for item in items
+        if item.id.startswith("hist_")
+    ]
+    library_items = {}
+    if library_ids:
+        library_result = await db.execute(
+            select(LibraryItem).where(
+                LibraryItem.user_id == current_user.user_id,
+                LibraryItem.id.in_(library_ids),
+            )
+        )
+        library_items = {item.id: item for item in library_result.scalars().all()}
+    return [
+        _serialize_history(
+            item,
+            library_items.get(f"lib_{item.id[5:]}")
+            if item.id.startswith("hist_")
+            else None,
+        )
+        for item in items
+    ]
 
 
 @router.delete("/history/{history_id}")
@@ -522,6 +615,22 @@ async def remove_history_item(history_id: str, current_user: AuthUser = Depends(
     item = result.scalar_one_or_none()
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="History item not found.")
+    if history_id.startswith("hist_"):
+        linked_library = await db.get(LibraryItem, f"lib_{history_id[5:]}")
+        if linked_library is not None and linked_library.user_id == current_user.user_id:
+            await _remove_library_record(linked_library, current_user.user_id, db)
+        linked_job = await db.get(DownloadJob, history_id[5:])
+        if linked_job is not None and linked_job.user_id == current_user.user_id:
+            if linked_job.file_path:
+                try:
+                    path = _resolve_managed_path(linked_job.file_path, current_user.user_id)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="The download file is outside the user's managed storage directory.",
+                    ) from exc
+                path.unlink(missing_ok=True)
+            await db.delete(linked_job)
     await db.delete(item)
     await db.commit()
     return {"status": "removed", "id": history_id}
@@ -530,6 +639,59 @@ async def remove_history_item(history_id: str, current_user: AuthUser = Depends(
 @router.delete("/history")
 async def clear_history(current_user: AuthUser = Depends(get_current_user_or_guest), db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(delete(HistoryItem).where(HistoryItem.user_id == current_user.user_id))
+    await db.commit()
+    return {"status": "cleared"}
+
+
+@router.delete("/guest-session")
+async def clear_guest_session(
+    current_user: AuthUser = Depends(get_current_user_or_guest),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    if current_user.role != "guest":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only guest sessions can be cleared this way.",
+        )
+
+    jobs = (
+        await db.scalars(
+            select(DownloadJob).where(DownloadJob.user_id == current_user.user_id)
+        )
+    ).all()
+    paths = {job.file_path for job in jobs if job.file_path}
+    library_paths = await db.scalars(
+        select(LibraryItem.file_path).where(
+            LibraryItem.user_id == current_user.user_id,
+            LibraryItem.file_path != "",
+        )
+    )
+    paths.update(path for path in library_paths.all() if path)
+    history_paths = await db.scalars(
+        select(HistoryItem.file_path).where(
+            HistoryItem.user_id == current_user.user_id,
+            HistoryItem.file_path.is_not(None),
+        )
+    )
+    paths.update(path for path in history_paths.all() if path)
+    for job in jobs:
+        stop_download_job(job.id, "cancelled")
+    for managed_file in paths:
+        try:
+            path = _resolve_managed_path(managed_file, current_user.user_id)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A guest download file is outside its managed storage directory.",
+            ) from exc
+        path.unlink(missing_ok=True)
+
+    await db.execute(delete(HistoryItem).where(HistoryItem.user_id == current_user.user_id))
+    await db.execute(delete(LibraryItem).where(LibraryItem.user_id == current_user.user_id))
+    await db.execute(delete(DownloadJob).where(DownloadJob.user_id == current_user.user_id))
+    guest_user = await db.get(User, current_user.user_id)
+    if guest_user is not None:
+        await db.delete(guest_user)
     await db.commit()
     return {"status": "cleared"}
 
@@ -552,8 +714,9 @@ async def get_overview(days: int = Query(default=7, ge=1, le=365), current_user:
         )
     )
     count, completed, failed = totals.one()
-    storage_bytes = await _get_user_storage_bytes(db, current_user.user_id)
+    storage_bytes = await _get_user_library_bytes(db, current_user.user_id)
     quota_bytes = settings.storage_quota_bytes or None
+    backend_storage_bytes = await _get_user_storage_bytes(db, current_user.user_id)
     activity_result = await db.execute(
         select(HistoryItem.timestamp, HistoryItem.kind).where(
             HistoryItem.user_id == current_user.user_id,
@@ -583,7 +746,7 @@ async def get_overview(days: int = Query(default=7, ge=1, le=365), current_user:
         "failed": int(failed or 0),
         "storageBytes": storage_bytes,
         "storageQuotaBytes": quota_bytes,
-        "storageRemainingBytes": max(quota_bytes - storage_bytes, 0) if quota_bytes is not None else None,
+        "storageRemainingBytes": max(quota_bytes - backend_storage_bytes, 0) if quota_bytes is not None else None,
         "storageDiskFreeBytes": storage_disk_free_bytes(),
         "activity": activity,
     }
@@ -591,6 +754,18 @@ async def get_overview(days: int = Query(default=7, ge=1, le=365), current_user:
 
 async def _get_user_storage_bytes(db: AsyncSession, user_id: str) -> int:
     result = await db.execute(
-        select(func.coalesce(func.sum(LibraryItem.size_bytes), 0)).where(LibraryItem.user_id == user_id)
+        select(func.coalesce(func.sum(LibraryItem.size_bytes), 0)).where(
+            LibraryItem.user_id == user_id,
+            LibraryItem.file_path != "",
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def _get_user_library_bytes(db: AsyncSession, user_id: str) -> int:
+    result = await db.execute(
+        select(func.coalesce(func.sum(LibraryItem.size_bytes), 0)).where(
+            LibraryItem.user_id == user_id
+        )
     )
     return int(result.scalar_one())

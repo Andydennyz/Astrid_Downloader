@@ -25,6 +25,22 @@ class FileOpenSessionRequest(BaseModel):
     path: str = Field(..., min_length=1)
 
 
+class DeviceSavedRequest(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("filename")
+    @classmethod
+    def require_safe_relative_filename(cls, value: str) -> str:
+        normalized = value.replace("\\", "/")
+        parts = normalized.split("/")
+        if (
+            normalized.startswith("/")
+            or any(part in {"", ".", ".."} or ":" in part for part in parts)
+        ):
+            raise ValueError("Filename must be a safe relative path.")
+        return normalized
+
+
 class FormatOptionSchema(BaseModel):
     formatId: str
     kind: str

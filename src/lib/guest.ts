@@ -30,10 +30,10 @@ function createGuestToken(): string {
 export function getGuestToken(): string | null {
   if (typeof window === "undefined") return null;
 
-  const storedToken = window.localStorage.getItem(GUEST_TOKEN_KEY);
+  const storedToken = window.sessionStorage.getItem(GUEST_TOKEN_KEY);
   if (storedToken && UUID_V4_PATTERN.test(storedToken)) return storedToken;
 
   const token = createGuestToken();
-  window.localStorage.setItem(GUEST_TOKEN_KEY, token);
+  window.sessionStorage.setItem(GUEST_TOKEN_KEY, token);
   return token;
 }

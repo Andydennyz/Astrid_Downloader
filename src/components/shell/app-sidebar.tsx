@@ -8,7 +8,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip.tsx";
 import { useDownloads } from "@/hooks/use-downloads.ts";
+import { useLibrary } from "@/hooks/use-media-data.ts";
 import { NAV_SECTIONS, SETTINGS_NAV, type NavItem } from "@/lib/navigation.ts";
+import { formatBytes } from "@/lib/format.ts";
 import { cn } from "@/lib/utils.ts";
 
 function NavLink({
@@ -122,8 +124,10 @@ export function SidebarNav({
 }
 
 function StorageMeter({ collapsed }: { collapsed: boolean }) {
-  // Demo disk figures; the filesystem bridge would report real free space.
-  const used = 0.62;
+  const libraryQuery = useLibrary();
+  const items = libraryQuery.data ?? [];
+  const usedBytes = items.reduce((total, item) => total + item.sizeBytes, 0);
+  const description = `${formatBytes(usedBytes)} of app-managed media`;
   if (collapsed) {
     return (
       <Tooltip>
@@ -134,7 +138,7 @@ function StorageMeter({ collapsed }: { collapsed: boolean }) {
             </div>
           }
         />
-        <TooltipContent side="right">310 GB of 500 GB used</TooltipContent>
+        <TooltipContent side="right">{description}</TooltipContent>
       </Tooltip>
     );
   }
@@ -142,16 +146,10 @@ function StorageMeter({ collapsed }: { collapsed: boolean }) {
     <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-3">
       <div className="flex items-center gap-2 text-xs font-medium">
         <HardDrive className="size-3.5 text-accent" />
-        Downloads drive
-      </div>
-      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-sidebar-border">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
-          style={{ width: `${used * 100}%` }}
-        />
+        Device media
       </div>
       <div className="mt-2 text-[11px] text-sidebar-foreground/55">
-        310 GB of 500 GB used
+        {libraryQuery.isLoading ? "Checking stored media…" : description}
       </div>
     </div>
   );

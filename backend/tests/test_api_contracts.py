@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Iterator
 from pathlib import Path
 from uuid import uuid4
@@ -273,6 +274,244 @@ def test_library_filters_are_applied_with_user_scoping(api_client) -> None:
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == ["video-1"]
     assert client.get("/api/v1/library", params={"kind": "invalid"}).status_code == 422
+
+
+def test_saving_completed_media_to_device_removes_the_server_copy_but_keeps_metadata(
+    api_client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, sessions, _ = api_client
+    monkeypatch.setattr(media_api.settings, "storage_path", str(tmp_path / "storage"))
+    file_path = user_storage_root("user-1") / "Downloads" / "clip.mp4"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_bytes(b"completed media")
+
+    async def seed() -> None:
+        async with sessions() as session:
+            session.add(User(id="user-1"))
+            session.add(
+                DownloadJob(
+                    id="job-1",
+                    user_id="user-1",
+                    source_url="https://example.com/clip",
+                    title="Clip",
+                    creator="Creator",
+                    duration_sec=10,
+                    destination="Downloads",
+                    status="completed",
+                    extension="mp4",
+                    kind="video",
+                    quality_label="1080p",
+                    file_path=str(file_path),
+                )
+            )
+            session.add(
+                LibraryItem(
+                    id="lib_job-1",
+                    user_id="user-1",
+                    title="Clip",
+                    creator="Creator",
+                    filename=file_path.name,
+                    source_url="https://example.com/clip",
+                    file_path=str(file_path),
+                    kind="video",
+                    extension="mp4",
+                    quality_label="1080p",
+                    size_bytes=16,
+                )
+            )
+            session.add(
+                HistoryItem(
+                    id="hist_job-1",
+                    user_id="user-1",
+                    title="Clip",
+                    creator="Creator",
+                    source_url="https://example.com/clip",
+                    kind="video",
+                    status="completed",
+                    extension="mp4",
+                    quality_label="1080p",
+                    size_bytes=16,
+                    file_path=str(file_path),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(seed())
+
+    response = client.post(
+        "/api/v1/downloads/job-1/device-saved",
+        json={"filename": "Video/clip.mp4"},
+    )
+
+    assert response.status_code == 200
+    assert not file_path.exists()
+    library = client.get("/api/v1/library").json()[0]
+    history = client.get("/api/v1/history").json()[0]
+    assert library["filePath"] is None
+    assert library["filename"] == "Video/clip.mp4"
+    assert history["filePath"] is None
+    assert history["libraryId"] == "lib_job-1"
+    assert history["filename"] == "Video/clip.mp4"
+
+    async def assert_paths_cleared() -> None:
+        async with sessions() as session:
+            job = await session.get(DownloadJob, "job-1")
+            item = await session.get(LibraryItem, "lib_job-1")
+            assert job is not None and job.file_path is None
+            assert item is not None and item.file_path == ""
+
+    asyncio.run(assert_paths_cleared())
+
+
+def test_deleting_completed_history_removes_linked_media_and_server_file(
+    api_client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, sessions, _ = api_client
+    monkeypatch.setattr(media_api.settings, "storage_path", str(tmp_path / "storage"))
+    file_path = user_storage_root("user-1") / "Downloads" / "clip.mp4"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_bytes(b"completed media")
+
+    async def seed() -> None:
+        async with sessions() as session:
+            session.add(User(id="user-1"))
+            session.add(
+                DownloadJob(
+                    id="job-1",
+                    user_id="user-1",
+                    source_url="https://example.com/clip",
+                    title="Clip",
+                    creator="Creator",
+                    duration_sec=10,
+                    destination="Downloads",
+                    status="completed",
+                    extension="mp4",
+                    kind="video",
+                    quality_label="1080p",
+                    file_path=str(file_path),
+                )
+            )
+            session.add(
+                LibraryItem(
+                    id="lib_job-1",
+                    user_id="user-1",
+                    title="Clip",
+                    creator="Creator",
+                    filename=file_path.name,
+                    source_url="https://example.com/clip",
+                    file_path=str(file_path),
+                    kind="video",
+                    extension="mp4",
+                    quality_label="1080p",
+                    size_bytes=16,
+                )
+            )
+            session.add(
+                HistoryItem(
+                    id="hist_job-1",
+                    user_id="user-1",
+                    title="Clip",
+                    creator="Creator",
+                    source_url="https://example.com/clip",
+                    kind="video",
+                    status="completed",
+                    extension="mp4",
+                    quality_label="1080p",
+                    size_bytes=16,
+                    file_path=str(file_path),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(seed())
+
+    response = client.delete("/api/v1/history/hist_job-1")
+
+    assert response.status_code == 200
+    assert not file_path.exists()
+    assert client.get("/api/v1/library").json() == []
+    assert client.get("/api/v1/history").json() == []
+
+
+def test_guest_session_cleanup_removes_temporary_records_and_backend_files(
+    api_client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, sessions, _ = api_client
+    app.dependency_overrides.pop(get_current_user_or_guest)
+    monkeypatch.setattr(media_api.settings, "storage_path", str(tmp_path / "storage"))
+    guest_token = str(uuid4())
+    guest_user_id = "guest-" + hashlib.sha256(guest_token.encode("ascii")).hexdigest()
+    file_path = user_storage_root(guest_user_id) / "Downloads" / "clip.mp4"
+    file_path.parent.mkdir(parents=True)
+    file_path.write_bytes(b"temporary media")
+
+    async def seed() -> None:
+        async with sessions() as session:
+            session.add(User(id=guest_user_id))
+            session.add(
+                DownloadJob(
+                    id="guest-job",
+                    user_id=guest_user_id,
+                    source_url="https://www.youtube.com/watch?v=clip",
+                    title="Guest clip",
+                    creator="Creator",
+                    duration_sec=10,
+                    destination="Downloads",
+                    status="completed",
+                    extension="mp4",
+                    kind="video",
+                    quality_label="best",
+                    file_path=str(file_path),
+                )
+            )
+            session.add(
+                LibraryItem(
+                    id="lib_guest-job",
+                    user_id=guest_user_id,
+                    title="Guest clip",
+                    creator="Creator",
+                    filename=file_path.name,
+                    source_url="https://www.youtube.com/watch?v=clip",
+                    file_path=str(file_path),
+                    kind="video",
+                    extension="mp4",
+                    quality_label="best",
+                )
+            )
+            session.add(
+                HistoryItem(
+                    id="hist_guest-job",
+                    user_id=guest_user_id,
+                    title="Guest clip",
+                    creator="Creator",
+                    source_url="https://www.youtube.com/watch?v=clip",
+                    kind="video",
+                    status="completed",
+                    extension="mp4",
+                    quality_label="best",
+                    file_path=str(file_path),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(seed())
+
+    response = client.delete(
+        "/api/v1/guest-session",
+        headers={"X-Guest-Token": guest_token},
+    )
+
+    assert response.status_code == 200
+    assert not file_path.exists()
+    assert client.get("/api/v1/downloads", headers={"X-Guest-Token": guest_token}).json() == []
+    assert client.get("/api/v1/library", headers={"X-Guest-Token": guest_token}).json() == []
+    assert client.get("/api/v1/history", headers={"X-Guest-Token": guest_token}).json() == []
+
+    async def assert_guest_removed() -> None:
+        async with sessions() as session:
+            assert await session.get(User, guest_user_id) is None
+
+    asyncio.run(assert_guest_removed())
 
 
 def test_open_session_streams_owned_media_with_range_support(api_client, tmp_path: Path, monkeypatch) -> None:

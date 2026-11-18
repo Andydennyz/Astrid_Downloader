@@ -62,11 +62,7 @@ export default function StatsGrid({ stats }: { stats: OverviewStats | undefined 
     {
       label: "Storage used",
       value: formatBytes(stats.storageBytes),
-      hint: stats.storageQuotaBytes
-        ? `${formatBytes(stats.storageRemainingBytes ?? 0)} available of ${formatBytes(stats.storageQuotaBytes)} quota`
-        : stats.storageDiskFreeBytes !== undefined
-          ? `${formatBytes(stats.storageDiskFreeBytes)} free on disk`
-          : "Across your library",
+      hint: "App-managed media in your selected folder",
       icon: HardDrive,
       tone: "bg-amber-500/10 text-amber-600 ring-amber-500/20 dark:text-amber-400",
     },

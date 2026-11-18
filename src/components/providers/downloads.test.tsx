@@ -4,10 +4,20 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DownloadJob } from "@/services/types.ts";
 
-const { list } = vi.hoisted(() => ({ list: vi.fn() }));
+const { list, saveCompletedFile } = vi.hoisted(() => ({
+  list: vi.fn(),
+  saveCompletedFile: vi.fn(),
+}));
 
 vi.mock("@/services/index.ts", () => ({
-  getServices: () => ({ downloads: { list } }),
+  getServices: () => ({
+    downloads: { list },
+    fileSystem: {
+      getFolderName: vi.fn().mockResolvedValue(null),
+      saveCompletedFile,
+    },
+    library: { list: vi.fn().mockResolvedValue([]) },
+  }),
 }));
 
 import { DownloadsContext } from "@/hooks/use-downloads.ts";
@@ -139,5 +149,27 @@ describe("DownloadsProvider polling", () => {
     });
     expect(list).toHaveBeenCalledTimes(2);
     expect(snapshots).toHaveLength(renderCount);
+  });
+
+  it("automatically transfers completed backend files to the selected device folder", async () => {
+    const completed = {
+      ...createJob("completed"),
+      filePath: "C:\\storage\\media-job-1.mp4",
+    };
+    list.mockResolvedValue([completed]);
+    saveCompletedFile.mockResolvedValue("media-job-1.mp4");
+    renderDownloadsProbe([]);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(saveCompletedFile).toHaveBeenCalledWith(
+      "job-1",
+      "media-job-1.mp4",
+      "C:\\storage\\media-job-1.mp4",
+      undefined,
+    );
   });
 });

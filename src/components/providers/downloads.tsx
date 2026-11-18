@@ -9,6 +9,8 @@ import {
 } from "@/hooks/use-downloads.ts";
 import { errorMessage } from "@/services/errors.ts";
 import { getServices, type DownloadJob } from "@/services/index.ts";
+import { getGuestToken } from "@/lib/guest.ts";
+import { BROWSER_DOWNLOADS_MODE } from "@/services/device-storage.ts";
 
 type StatusStream = {
   start: () => void;
@@ -110,6 +112,10 @@ export default function DownloadsProvider({
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const lastStatus = useRef(new Map<string, DownloadJob["status"]>());
   const hasActiveJobs = useRef(false);
+  const savingJobs = useRef(new Set<string>());
+  const attemptedJobs = useRef(new Set<string>());
+  const savingLegacyItems = useRef(false);
+  const attemptedLegacyItems = useRef(new Set<string>());
 
   const notify = useCallback(
     (n: Omit<AppNotification, "id" | "createdAt" | "read">) => {
@@ -128,6 +134,71 @@ export default function DownloadsProvider({
     [],
   );
 
+  const saveCompletedFile = useCallback(
+    async (
+      jobId: string,
+      filename: string,
+      filePath: string,
+      destination?: string,
+    ) => {
+      if (savingJobs.current.has(jobId) || attemptedJobs.current.has(jobId)) return;
+      savingJobs.current.add(jobId);
+      attemptedJobs.current.add(jobId);
+      try {
+        await getServices().fileSystem.saveCompletedFile(
+          jobId,
+          filename,
+          filePath,
+          destination,
+        );
+        void queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
+        void queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
+        void queryClient.invalidateQueries({ queryKey: ["astrid", "overview"] });
+        if (
+          await getServices().fileSystem.getFolderName() ===
+          BROWSER_DOWNLOADS_MODE
+        ) {
+          toast.success("Sent to browser downloads", { description: filename });
+        } else {
+          toast.success("Saved to your device", { description: filename });
+        }
+      } catch (error) {
+        toast.error(errorMessage(error, "Could not save the completed media to your device."));
+      } finally {
+        savingJobs.current.delete(jobId);
+      }
+    },
+    [queryClient],
+  );
+
+  const migrateLegacyLibraryItems = useCallback(async () => {
+    const services = getServices();
+    if (!services.fileSystem || !services.library || savingLegacyItems.current) return;
+
+    savingLegacyItems.current = true;
+    try {
+      const folderName = await services.fileSystem.getFolderName();
+      if (!folderName || folderName === BROWSER_DOWNLOADS_MODE) return;
+      const items = await services.library.list();
+      for (const item of items) {
+        if (!item.filePath || !item.id.startsWith("lib_")) continue;
+        if (attemptedLegacyItems.current.has(item.id)) continue;
+        attemptedLegacyItems.current.add(item.id);
+        try {
+          await saveCompletedFile(
+            item.id.slice(4),
+            item.filename.replace(/\\/g, "/").split("/").pop() ?? item.filename,
+            item.filePath,
+          );
+        } catch (error) {
+          toast.error(errorMessage(error, `Could not move ${item.filename} to your device.`));
+        }
+      }
+    } finally {
+      savingLegacyItems.current = false;
+    }
+  }, [saveCompletedFile]);
+
   const syncJobs = useCallback(async () => {
     try {
       const { downloads } = getServices();
@@ -135,6 +206,22 @@ export default function DownloadsProvider({
       const nextStatus = new Map<string, DownloadJob["status"]>();
 
       for (const job of nextJobs) {
+        if (job.status === "completed" && job.filePath) {
+          const filename = job.filePath.replace(/\\/g, "/").split("/").pop();
+          if (filename) {
+            const requestedDestination = job.request.destination;
+            const deviceDestination =
+              requestedDestination === "." || requestedDestination.startsWith("./")
+                ? requestedDestination
+                : undefined;
+            void saveCompletedFile(
+              job.id,
+              filename,
+              job.filePath,
+              deviceDestination,
+            );
+          }
+        }
         const previous = lastStatus.current.get(job.id);
         nextStatus.set(job.id, job.status);
 
@@ -179,22 +266,49 @@ export default function DownloadsProvider({
       );
       setError(null);
       setLoading(false);
+      void migrateLegacyLibraryItems();
     } catch (error) {
       setLoading(false);
       setError(errorMessage(error, "Could not refresh the download queue."));
     }
-  }, [notify, queryClient]);
+  }, [migrateLegacyLibraryItems, notify, queryClient, saveCompletedFile]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    const onFolderChanged = () => {
+      attemptedJobs.current.clear();
+      attemptedLegacyItems.current.clear();
+      void syncJobs();
+    };
     const statusStream = createPollingStatusStream(syncJobs, () =>
       hasActiveJobs.current ? 2500 : 15000,
     );
 
+    window.addEventListener("astrid:device-folder-changed", onFolderChanged);
     statusStream.start();
-    return () => statusStream.stop();
+    return () => {
+      window.removeEventListener("astrid:device-folder-changed", onFolderChanged);
+      statusStream.stop();
+    };
   }, [syncJobs]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const guestToken = getGuestToken();
+    if (!guestToken) return;
+    const clearGuestSession = () => {
+      void fetch("/api/v1/guest-session", {
+        method: "DELETE",
+        headers: { "X-Guest-Token": guestToken },
+        keepalive: true,
+      }).catch((error: unknown) => {
+        console.error("Could not clear the temporary guest session.", error);
+      });
+    };
+    window.addEventListener("pagehide", clearGuestSession);
+    return () => window.removeEventListener("pagehide", clearGuestSession);
+  }, []);
 
   const run = useCallback(
     async (action: () => Promise<unknown>, fallback: string) => {
@@ -224,6 +338,11 @@ export default function DownloadsProvider({
       aggregateSpeedBps: active.reduce((s, j) => s + (j.speedBps ?? 0), 0),
       start: async (request) => {
         try {
+          let folderName = await getServices().fileSystem.getFolderName();
+          if (!folderName) {
+            folderName = await getServices().fileSystem.chooseFolder();
+          }
+          if (!folderName) return null;
           const job = await downloads.start(request);
           notify({
             kind: "info",

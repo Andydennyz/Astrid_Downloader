@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowRight, Copy, Download, MoreHorizontal, Play, RotateCcw, Trash2, Inbox } from "lucide-react";
+import { ArrowRight, Copy, MoreHorizontal, Play, RotateCcw, Trash2, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { Panel, PanelHeader } from "@/components/layout.tsx";
 import MediaThumb from "@/components/media-thumb.tsx";
@@ -18,15 +17,16 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
 import { useDownloads } from "@/hooks/use-downloads.ts";
-import { useFileActions } from "@/hooks/use-media-data.ts";
+import { useFileActions, useRemoveHistoryEntry } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
 import { errorMessage } from "@/services/errors.ts";
 import { getServices, type HistoryEntry } from "@/services/index.ts";
+import { outputFolder } from "../-lib/new-download.ts";
 
 function QuickActions({ entry }: { entry: HistoryEntry }) {
   const files = useFileActions();
   const { start } = useDownloads();
-  const queryClient = useQueryClient();
+  const removeEntry = useRemoveHistoryEntry();
   const { settings } = getServices();
 
   const redownload = async () => {
@@ -43,7 +43,7 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
         audioFormat: prefs.general.defaultAudioFormat,
         container: prefs.general.defaultContainer,
       },
-      destination: prefs.general.downloadLocation,
+      destination: outputFolder(".", entry.kind, entry.creator, prefs.general),
     });
     if (job) toast.success("Added to queue", { description: entry.title });
   };
@@ -57,12 +57,16 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
     }
   };
 
-  const path = entry.filePath;
+  const hasFile = Boolean(entry.libraryId && entry.filename) || Boolean(entry.filePath);
+  const filename =
+    entry.filename ??
+    entry.filePath?.replace(/\\/g, "/").split("/").pop() ??
+    "";
   return (
     <div className="flex items-center justify-end gap-0.5">
-      {path ? (
+      {hasFile ? (
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Open file" onClick={() => void files.open(path)} />}>
+          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Open file" onClick={() => void files.open(entry.libraryId ?? entry.id, filename, entry.filePath)} />}>
             <Play />
           </TooltipTrigger>
           <TooltipContent>Open file</TooltipContent>
@@ -80,15 +84,11 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
           <MoreHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          {path && (
+          {hasFile && (
             <>
-              <DropdownMenuItem onClick={() => void files.saveToDevice(path)}>
-                <Download />
-                Save to this device
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void files.copyPath(path)}>
+              <DropdownMenuItem onClick={() => void files.copyPath(filename)}>
                 <Copy />
-                Copy file path
+                Copy filename
               </DropdownMenuItem>
             </>
           )}
@@ -103,15 +103,10 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
-            onClick={() => {
-              void getServices().history.remove(entry.id).then(async () => {
-                await queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
-                toast.success("Removed from recent downloads");
-              }).catch((error: unknown) => toast.error(errorMessage(error, "Could not remove this history item.")));
-            }}
+            onClick={() => void removeEntry(entry)}
           >
             <Trash2 />
-            Remove from history
+            Delete history and media
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

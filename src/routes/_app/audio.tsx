@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { AudioLines, Download, Search } from "lucide-react";
+import { AudioLines, Search } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
 import ViewModeToggle from "@/components/view-mode-toggle.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
-import { useFileActions, useLibrary } from "@/hooks/use-media-data.ts";
+import { useLibrary } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
+import LibraryItemActions, { MediaSourceLink } from "./-components/library-item-actions.tsx";
 
 export const Route = createFileRoute("/_app/audio")({
   head: () => ({ meta: [{ title: "Audio Downloads · MediaDock" }] }),
@@ -19,7 +19,6 @@ function Page() {
   const [formatFilter, setFormatFilter] = useState("all");
   const [view, setView] = useState<"grid" | "list">("grid");
   const libraryQuery = useLibrary({ kind: "audio" });
-  const { open, saveToDevice } = useFileActions();
 
   const visible = useMemo(() => {
     const items = libraryQuery.data ?? [];
@@ -100,22 +99,20 @@ function Page() {
                 </div>
                 <div className="space-y-3 p-4">
                   <div>
-                    <h3 className="text-base font-semibold">{item.title}</h3>
+                    <h3 className="text-base font-semibold">
+                      <MediaSourceLink
+                        sourceUrl={item.sourceUrl}
+                        title={item.title}
+                        className="underline-offset-4 hover:text-primary hover:underline"
+                      />
+                    </h3>
                     <p className="mt-1 text-sm text-muted-foreground">{item.creator}</p>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{formatDuration(item.durationSec)}</span>
                     <span>{formatBytes(item.sizeBytes)}</span>
                   </div>
-                  <div className="flex justify-between gap-2">
-                    <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => void open(item.filePath)}>
-                      Play preview
-                    </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => void saveToDevice(item.filePath)}>
-                      <Download className="size-3.5" />
-                      Save to device
-                    </Button>
-                  </div>
+                  <LibraryItemActions item={item} layout="grid" />
                 </div>
               </div>
             ))}
@@ -126,22 +123,20 @@ function Page() {
               <div key={item.id} className="flex flex-col gap-3 rounded-2xl border border-border bg-card/60 p-3 sm:flex-row sm:items-center">
                 <img src={item.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" className="h-16 w-full rounded-xl object-cover sm:w-20" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{item.title}</p>
+                  <p className="truncate font-medium">
+                    <MediaSourceLink
+                      sourceUrl={item.sourceUrl}
+                      title={item.title}
+                      className="underline-offset-4 hover:text-primary hover:underline"
+                    />
+                  </p>
                   <p className="truncate text-sm text-muted-foreground">{item.creator}</p>
                 </div>
                 <div className="flex gap-4 text-xs text-muted-foreground sm:flex-col sm:gap-1 sm:text-right">
                   <span>{item.extension.toUpperCase()} · {item.qualityLabel}</span>
                   <span>{formatDuration(item.durationSec)} · {formatBytes(item.sizeBytes)}</span>
                 </div>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => void open(item.filePath)}>
-                    Play preview
-                  </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => void saveToDevice(item.filePath)}>
-                    <Download className="size-3.5" />
-                    Save
-                  </Button>
-                </div>
+                <LibraryItemActions item={item} layout="list" />
               </div>
             ))}
           </div>

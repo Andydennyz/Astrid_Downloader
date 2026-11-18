@@ -107,21 +107,25 @@ export function createMockFileSystemService(): FileSystemService {
     async openFile() {
       await delay(300);
     },
-    async saveFileToDevice() {
+    async downloadFile() {
       await delay(300);
+    },
+    async removeFile() {
+      await delay(300);
+    },
+    async saveCompletedFile(_jobId, filename) {
+      await delay(300);
+      return filename;
     },
     async copyPath(path) {
       await writeClipboardText(path);
     },
-    async chooseFolder(current) {
+    async chooseFolder() {
       await delay(450);
-      // A native picker would return the user's choice. Cycle through plausible
-      // folders so the demo visibly changes the destination.
-      const index = PICKER_FOLDERS.indexOf(current);
-      return PICKER_FOLDERS[(index + 1) % PICKER_FOLDERS.length] ?? DEFAULT_ROOT;
+      return PICKER_FOLDERS[0] ?? DEFAULT_ROOT;
     },
-    async fileExists(path) {
-      return mockDb.library.some((item) => item.filePath === path);
+    async getFolderName() {
+      return PICKER_FOLDERS[0] ?? DEFAULT_ROOT;
     },
   };
 }
