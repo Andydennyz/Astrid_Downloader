@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "app",
+  "name": "astrid-downloader",
   "compatibility_date": "2026-06-28",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./src/server.ts",
