@@ -41,6 +41,7 @@ tsconfig.tsbuildinfo
 
 # Cloudflare
 .wrangler
+.copilot-azure/
 
 # Shell placeholders
 /.bash_profile
