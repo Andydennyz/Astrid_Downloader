@@ -36,6 +36,7 @@ tsconfig.tsbuildinfo
 .env*
 .dev.vars*
 .venv*
+/backend/certs/prod-ca-2021.crt
 /backend/docker.env
 /data/
 
