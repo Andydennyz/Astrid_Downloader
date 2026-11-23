@@ -12,9 +12,6 @@ MediaDock supports both guest sessions and authenticated accounts, providing a f
 
 **Live Application:** https://media-dock.astrid-downloader.workers.dev/
 
-**Backend API:** https://astrid-downloader-api.fly.dev/
-
-**API Documentation:** https://astrid-downloader-api.fly.dev/docs
 
 ---
 
