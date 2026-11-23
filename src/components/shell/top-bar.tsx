@@ -11,6 +11,18 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button.tsx";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
 import ThemeToggle from "@/components/theme-toggle.tsx";
 import { findNav, pageTitle } from "@/lib/navigation.ts";
 import ActivityIndicator from "./activity-indicator.tsx";
@@ -34,6 +46,22 @@ export default function TopBar({
   const { pathname } = useLocation();
   const { signOut, user } = useAuth();
   const nav = findNav(pathname);
+  const metadata = user?.user_metadata ?? {};
+  const metadataName = [metadata.full_name, metadata.name, metadata.user_name].find(
+    (value) => typeof value === "string" && value.trim(),
+  );
+  const displayName =
+    typeof metadataName === "string"
+      ? metadataName.trim()
+      : user?.email?.split("@")[0] || "Account";
+  const avatarValue = metadata.avatar_url ?? metadata.picture;
+  const avatarUrl = typeof avatarValue === "string" ? avatarValue : undefined;
+  const initials = displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .toUpperCase();
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b bg-background/75 px-4 backdrop-blur-xl md:px-6">
@@ -95,23 +123,56 @@ export default function TopBar({
         <NotificationsMenu />
         <ThemeToggle />
         {user ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Sign out"
-            title="Sign out"
-            onClick={() => {
-              void signOut().catch((error: unknown) => {
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : "Could not sign out.",
-                );
-              });
-            }}
-          >
-            <LogOut />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="max-w-40 gap-2 px-2"
+                  aria-label={`Profile: ${displayName}`}
+                  title={user.email ?? displayName}
+                />
+              }
+            >
+              <Avatar className="size-7">
+                {avatarUrl && <AvatarImage src={avatarUrl} alt="" />}
+                <AvatarFallback>{initials}</AvatarFallback>
+              </Avatar>
+              <span className="hidden max-w-28 truncate sm:inline">
+                {displayName}
+              </span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <div className="flex items-center gap-3 px-2 py-2">
+                <Avatar size="lg">
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt="" />}
+                  <AvatarFallback>{initials}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{displayName}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {user.email ?? "Signed in"}
+                  </p>
+                </div>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  void signOut().catch((error: unknown) => {
+                    toast.error(
+                      error instanceof Error
+                        ? error.message
+                        : "Could not sign out.",
+                    );
+                  });
+                }}
+              >
+                <LogOut />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <Button
             variant="outline"
