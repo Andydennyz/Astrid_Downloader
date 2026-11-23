@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     supabase_anon_key: str = Field(default="", alias="SUPABASE_ANON_KEY")
     supabase_service_role_key: str = Field(default="", alias="SUPABASE_SERVICE_ROLE_KEY")
     database_url: str = Field(default="", alias="DATABASE_URL")
+    database_ssl_ca_file: str = Field(default="", alias="DATABASE_SSL_CA_FILE")
     use_local_db: bool = Field(default=False, alias="USE_LOCAL_DB")
     supabase_jwt_secret: str = Field(default="", alias="SUPABASE_JWT_SECRET")
     secret_key: str = Field(default="development-secret-key", alias="SECRET_KEY")

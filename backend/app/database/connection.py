@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
+import ssl
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -37,12 +38,26 @@ else:
     database_url = None
 
 ssl_mode = settings.environment.lower() not in {"development", "local"}
+
+
+def _database_connect_args() -> dict[str, object]:
+    if database_url and database_url.startswith("postgresql+asyncpg"):
+        if not ssl_mode:
+            return {"ssl": False}
+        if settings.database_ssl_ca_file:
+            return {"ssl": ssl.create_default_context(cafile=settings.database_ssl_ca_file)}
+        return {"ssl": True}
+    if database_url and database_url.startswith("sqlite+aiosqlite"):
+        return {"check_same_thread": False}
+    return {}
+
+
 engine = (
     create_async_engine(
         database_url,
         pool_pre_ping=True,
         echo=settings.environment == "development",
-        connect_args={"ssl": ssl_mode} if database_url and database_url.startswith("postgresql+asyncpg") else {"check_same_thread": False} if database_url and database_url.startswith("sqlite+aiosqlite") else {},
+        connect_args=_database_connect_args(),
     )
     if database_url
     else None
