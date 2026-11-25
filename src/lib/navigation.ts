@@ -4,9 +4,12 @@ import {
   CheckCircle2,
   Clapperboard,
   History,
+  HardDrive,
   LayoutDashboard,
   ListOrdered,
+  ListVideo,
   PlusCircle,
+  Play,
   Settings,
 } from "lucide-react";
 import type { RoutePath } from "@/router.tsx";
@@ -35,6 +38,18 @@ export const NAV_SECTIONS: NavSection[] = [
         to: "/new",
         icon: PlusCircle,
         description: "Paste a link and pick a format",
+      },
+      {
+        label: "Direct Player",
+        to: "/player",
+        icon: Play,
+        description: "Play a direct media URL or local file",
+      },
+      {
+        label: "Device Media",
+        to: "/device-media",
+        icon: HardDrive,
+        description: "Browse and play audio and video on this phone",
       },
       {
         label: "Download Queue",
@@ -66,6 +81,12 @@ export const NAV_SECTIONS: NavSection[] = [
         description: "Films, talks and clips",
       },
       {
+        label: "Playlists",
+        to: "/playlists",
+        icon: ListVideo,
+        description: "Import and play M3U channel playlists",
+      },
+      {
         label: "History",
         to: "/history",
         icon: History,
@@ -93,6 +114,9 @@ const PAGE_TITLES: Partial<Record<RoutePath, string>> = {
   "/audio": "Audio Downloads",
   "/video": "Video Downloads",
   "/history": "Download History",
+  "/player": "Direct Player",
+  "/device-media": "Device Media",
+  "/playlists": "M3U Playlists",
 };
 
 export function findNav(pathname: string): NavItem | undefined {

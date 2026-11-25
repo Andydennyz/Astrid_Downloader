@@ -1,3 +1,10 @@
+import { Capacitor } from "@capacitor/core";
+import { FileTransfer } from "@capacitor/file-transfer";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import {
+  downloadToDownloads,
+  getDownloadUri,
+} from "./native-storage.ts";
 import type {
   AppServices,
   DownloadService,
@@ -12,8 +19,20 @@ import { getGuestToken } from "../lib/guest.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { ServiceError } from "./errors.ts";
 import {
+  clearLocalHistory,
+  loadLocalHistory,
+  mergeHistoryEntries,
+  rememberLocalHistory,
+  removeLocalHistory,
+  saveLocalHistory,
+} from "./history-storage.ts";
+import {
   BROWSER_DOWNLOADS_MODE,
+  NATIVE_DOCUMENTS_MODE,
   chooseDownloadDirectory,
+  getDeviceRelativePath,
+  getMediaDockRelativeDirectory,
+  getMediaDockRelativePath,
   getDownloadDirectoryName,
   readDeviceFile,
   removeDeviceFile,
@@ -26,6 +45,7 @@ import type {
   FormatOption,
   HistoryEntry,
   LibraryItem,
+  MediaPlaybackSource,
   MediaInfo,
   OverviewStats,
   Platform,
@@ -329,6 +349,24 @@ function createHttpMediaService(): MediaService {
       );
       return payload as FormatOption[];
     },
+    async getPlaybackSource(mediaId, kind) {
+      const payload = await request<{
+        ticket: string;
+        title: string;
+        element: "audio" | "video";
+        isHls: boolean;
+      }>(`media/${encodeURIComponent(mediaId)}/preview`, {
+        method: "POST",
+        body: JSON.stringify({ kind }),
+        headers: { "Content-Type": "application/json" },
+      });
+      return {
+        url: urlFor(`media/preview-stream/${encodeURIComponent(payload.ticket)}`),
+        title: payload.title,
+        element: payload.element,
+        isHls: payload.isHls,
+      };
+    },
   };
 }
 
@@ -452,15 +490,29 @@ function createHttpHistoryService(): HistoryService {
   return {
     async list() {
       const payload = await request<Array<Record<string, unknown>>>("history");
-      return payload.map((item) => normalizeHistoryEntry(item));
+      const remoteEntries = payload.map((item) => normalizeHistoryEntry(item));
+      const entries = mergeHistoryEntries(remoteEntries, loadLocalHistory());
+      saveLocalHistory(entries);
+      return entries;
+    },
+    async remember(entry) {
+      rememberLocalHistory(entry);
     },
     async remove(entryId) {
-      await request(`history/${encodeURIComponent(entryId)}`, {
-        method: "DELETE",
-      });
+      try {
+        await request(`history/${encodeURIComponent(entryId)}`, {
+          method: "DELETE",
+        });
+      } catch (error) {
+        if (!(error instanceof ServiceError) || error.code !== "NOT_FOUND") {
+          throw error;
+        }
+      }
+      removeLocalHistory(entryId);
     },
     async clear() {
       await request("history", { method: "DELETE" });
+      clearLocalHistory();
     },
     subscribe() {
       return () => undefined;
@@ -501,61 +553,19 @@ function mediaMimeType(filename: string, fallback = "") {
   return MEDIA_MIME_TYPES[extension] ?? (fallback || "application/octet-stream");
 }
 
-function renderMediaPlayer(
-  preview: Window,
-  source: string | File,
+function playbackSource(
+  url: string,
   filename: string,
-  downloadUrl?: string,
-) {
-  const isLocalFile = typeof source !== "string";
-  const sourceUrl = isLocalFile
-    ? URL.createObjectURL(
-        new Blob([source], { type: mediaMimeType(filename, source.type) }),
-      )
-    : source;
-  if (isLocalFile) {
-    preview.addEventListener(
-      "pagehide",
-      () => URL.revokeObjectURL(sourceUrl),
-      { once: true },
-    );
-  }
-
-  const document = preview.document;
-  document.title = filename;
-  document.documentElement.style.cssText =
-    "background:#090d10;color:#f4f4f5;font:14px system-ui,sans-serif";
-  document.body.style.cssText =
-    "box-sizing:border-box;min-height:100vh;margin:0;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px";
-
-  const title = document.createElement("h1");
-  title.textContent = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
-  title.style.cssText = "max-width:100%;margin:0;overflow-wrap:anywhere;font-size:16px";
-
-  const audio = mediaMimeType(filename).startsWith("audio/");
-  const player = document.createElement(audio ? "audio" : "video");
-  player.controls = true;
-  player.autoplay = true;
-  player.src = sourceUrl;
-  player.style.cssText = audio
-    ? "width:min(720px,100%)"
-    : "width:min(1280px,100%);max-height:calc(100vh - 140px);background:#000";
-  if (!audio && player instanceof HTMLVideoElement) player.playsInline = true;
-
-  const status = document.createElement("p");
-  status.textContent = "If playback does not start, use the player controls or download the file.";
-  status.style.cssText = "margin:0;color:#a1a1aa;text-align:center";
-  player.addEventListener("error", () => {
-    status.textContent =
-      "This browser cannot play this media format. Download the file or try a compatible media player.";
-  });
-  const download = document.createElement("a");
-  download.href = downloadUrl ?? sourceUrl;
-  download.download = title.textContent ?? filename;
-  download.textContent = "Download media";
-  download.style.cssText = "color:#a7f3d0;text-decoration:underline";
-
-  document.body.replaceChildren(title, player, status, download);
+  isObjectUrl = false,
+): MediaPlaybackSource {
+  const extension = filename.split(".").pop()?.toLowerCase() ?? "";
+  return {
+    url,
+    title: filename.replace(/\\/g, "/").split("/").pop() ?? filename,
+    element: mediaMimeType(filename).startsWith("audio/") ? "audio" : "video",
+    isHls: extension === "m3u8",
+    isObjectUrl,
+  };
 }
 
 function clickDownloadLink(href: string, filename: string) {
@@ -592,9 +602,44 @@ async function saveCompletedFileToDevice(
     },
   );
   const downloadUrl = urlFor(`files/open/${encodeURIComponent(ticket)}`);
-  if (await getDownloadDirectoryName() === BROWSER_DOWNLOADS_MODE) {
+  const downloadMode = await getDownloadDirectoryName();
+  if (downloadMode === BROWSER_DOWNLOADS_MODE) {
     clickDownloadLink(downloadUrl, filename);
     return filename;
+  }
+
+  if (Capacitor.isNativePlatform() || downloadMode === NATIVE_DOCUMENTS_MODE) {
+    const isAndroid = Capacitor.getPlatform() === "android";
+    const relativePath = isAndroid
+      ? getMediaDockRelativePath(filename, destination)
+      : getDeviceRelativePath(filename, destination);
+    if (isAndroid) {
+      await downloadToDownloads({
+        url: downloadUrl,
+        filename: relativePath.split("/").pop() ?? filename,
+        relativeDirectory: getMediaDockRelativeDirectory(filename, destination),
+      });
+    } else {
+      const parentPath = relativePath.split("/").slice(0, -1).join("/");
+      if (parentPath) {
+        await Filesystem.mkdir({
+          directory: Directory.Documents,
+          path: parentPath,
+          recursive: true,
+        });
+      }
+      const file = await Filesystem.getUri({
+        directory: Directory.Documents,
+        path: relativePath,
+      });
+      await FileTransfer.downloadFile({ url: downloadUrl, path: file.uri });
+    }
+    await request(`downloads/${encodeURIComponent(jobId)}/device-saved`, {
+      method: "POST",
+      body: JSON.stringify({ filename: relativePath }),
+      headers: { "Content-Type": "application/json" },
+    });
+    return relativePath;
   }
 
   const response = await fetch(downloadUrl);
@@ -664,16 +709,26 @@ export function createHttpServices(): AppServices {
             "Files can only be opened in a browser.",
           );
         }
-        const preview = window.open("about:blank", "_blank");
-        if (!preview) {
-          throw new ServiceError(
-            "UNAVAILABLE",
-            "Allow pop-ups to open this media file.",
-          );
-        }
-        preview.opener = null;
         try {
           if (!serverPath) {
+            if (Capacitor.isNativePlatform()) {
+              const isAndroid = Capacitor.getPlatform() === "android";
+              const file = isAndroid
+                ? await getDownloadUri({
+                    relativePath: getMediaDockRelativePath(filename)
+                      .split("/")
+                      .slice(1)
+                      .join("/"),
+                  })
+                : await Filesystem.getUri({
+                    directory: Directory.Documents,
+                    path: getDeviceRelativePath(filename),
+                  });
+              return playbackSource(
+                Capacitor.convertFileSrc(file.uri),
+                filename,
+              );
+            }
             const file = await readDeviceFile(filename);
             if (!file) {
               throw new ServiceError(
@@ -681,8 +736,10 @@ export function createHttpServices(): AppServices {
                 "This media file is not in the selected download folder. Use Download again to save it to your device.",
               );
             }
-            renderMediaPlayer(preview, file, filename);
-            return;
+            const url = URL.createObjectURL(
+              new Blob([file], { type: mediaMimeType(filename, file.type) }),
+            );
+            return playbackSource(url, filename, true);
           }
 
           const { ticket } = await request<{ ticket: string }>(
@@ -693,22 +750,11 @@ export function createHttpServices(): AppServices {
               headers: { "Content-Type": "application/json" },
             },
           );
-          const { ticket: downloadTicket } = await request<{ ticket: string }>(
-            "files/download-session",
-            {
-              method: "POST",
-              body: JSON.stringify({ path: serverPath }),
-              headers: { "Content-Type": "application/json" },
-            },
-          );
-          renderMediaPlayer(
-            preview,
+          return playbackSource(
             urlFor(`files/open/${encodeURIComponent(ticket)}`),
             filename,
-            urlFor(`files/open/${encodeURIComponent(downloadTicket)}`),
           );
         } catch (error) {
-          preview.close();
           if (error instanceof ServiceError && error.code === "NOT_FOUND") {
             if (!serverPath) throw error;
             throw new ServiceError(
@@ -730,6 +776,22 @@ export function createHttpServices(): AppServices {
             "UNAVAILABLE",
             "Files can only be downloaded from a browser.",
           );
+        }
+        if (Capacitor.isNativePlatform()) {
+          const isAndroid = Capacitor.getPlatform() === "android";
+          const file = isAndroid
+            ? await getDownloadUri({
+                relativePath: getMediaDockRelativePath(filename)
+                  .split("/")
+                  .slice(1)
+                  .join("/"),
+              })
+            : await Filesystem.getUri({
+                directory: Directory.Documents,
+                path: getDeviceRelativePath(filename),
+              });
+          clickDownloadLink(Capacitor.convertFileSrc(file.uri), filename);
+          return;
         }
         const file = await readDeviceFile(filename);
         if (!file) {

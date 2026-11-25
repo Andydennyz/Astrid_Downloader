@@ -66,7 +66,7 @@ export default function SaveOptions({
         <div className="flex flex-col gap-1.5">
           <Label>Destination</Label>
           <p className="rounded-lg border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
-            Completed media is saved to a selected folder when supported. Otherwise, your browser handles the download; its "Ask where to save each file" preference controls whether a location prompt appears. Choose a folder in{" "}
+            Completed media is saved to a selected folder when supported. Android saves files to shared Downloads/MediaDock, organized by media type; other native platforms use app Documents, and unsupported browsers use their standard Downloads location. Choose a folder in{" "}
             <Link to="/settings" className="text-primary hover:underline">Settings</Link>.
           </p>
           {(general.organizeByType || general.organizeByCreator) && (

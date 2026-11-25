@@ -25,6 +25,17 @@ class FileOpenSessionRequest(BaseModel):
     path: str = Field(..., min_length=1)
 
 
+class MediaPreviewRequest(BaseModel):
+    kind: str
+
+    @field_validator("kind")
+    @classmethod
+    def require_supported_kind(cls, value: str) -> str:
+        if value not in {"audio", "video"}:
+            raise ValueError("Preview kind must be audio or video.")
+        return value
+
+
 class DeviceSavedRequest(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
 

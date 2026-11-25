@@ -1,15 +1,20 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { ArrowRight, CheckCircle2, Plus } from "lucide-react";
+import { ArrowRight, CheckCircle2, CirclePlay, Music2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Panel } from "@/components/layout.tsx";
+import MediaPlayerDialog from "@/components/media-player-dialog.tsx";
 import MediaThumb from "@/components/media-thumb.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import { useDownloads } from "@/hooks/use-downloads.ts";
+import { errorMessage } from "@/services/errors.ts";
 import { renderFilenameTemplate } from "@/services/filename.ts";
 import { resolveSelection } from "@/services/format-selection.ts";
-import type { AppSettings, DownloadJob, FormatSelection, MediaInfo } from "@/services/index.ts";
+import { prepareRemoteMediaSource } from "@/lib/media-player.ts";
+import { getServices } from "@/services/index.ts";
+import type { AppSettings, DownloadJob, FormatSelection, MediaInfo, MediaPlaybackSource } from "@/services/index.ts";
 import { initialSelection, outputFolder } from "../../-lib/new-download.ts";
 import FormatOptions from "./format-options.tsx";
 import MediaPreview from "./media-preview.tsx";
@@ -30,6 +35,8 @@ export default function DownloadComposer({
   const [filename, setFilename] = useState("");
   const [starting, setStarting] = useState(false);
   const [started, setStarted] = useState<DownloadJob | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [playbackSource, setPlaybackSource] = useState<MediaPlaybackSource | null>(null);
 
   const resolved = resolveSelection(selection, info.formats, info.durationSec);
   const defaultFilename = renderFilenameTemplate(settings.advanced.filenameTemplate, {
@@ -39,6 +46,25 @@ export default function DownloadComposer({
     platform: info.platform,
   });
   const finalFolder = outputFolder(".", resolved.kind, info.creator, settings.general);
+  const previewKind = resolved.kind;
+
+  const handlePreview = async () => {
+    setPreviewing(true);
+    try {
+      const source =
+        info.platform === "other"
+          ? {
+              ...prepareRemoteMediaSource(info.sourceUrl),
+              title: info.title,
+            }
+          : await getServices().media.getPlaybackSource(info.id, previewKind);
+      setPlaybackSource(source);
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not start the media preview."));
+    } finally {
+      setPreviewing(false);
+    }
+  };
 
   const handleStart = async () => {
     setStarting(true);
@@ -97,6 +123,31 @@ export default function DownloadComposer({
   return (
     <div className="flex flex-col gap-5">
       <MediaPreview info={info} />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2"
+          disabled={previewing}
+          onClick={() => void handlePreview()}
+        >
+          {previewing ? (
+            <Spinner />
+          ) : previewKind === "audio" ? (
+            <Music2 />
+          ) : (
+            <CirclePlay />
+          )}
+          {previewing
+            ? "Preparing preview…"
+            : previewKind === "audio"
+              ? "Listen without downloading"
+              : "Watch without downloading"}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Streamed from the source; it is not saved to your device.
+        </p>
+      </div>
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="min-w-0">
           <FormatOptions info={info} selection={selection} onChange={setSelection} />
@@ -114,6 +165,12 @@ export default function DownloadComposer({
           />
         </div>
       </div>
+      {playbackSource && (
+        <MediaPlayerDialog
+          source={playbackSource}
+          onClose={() => setPlaybackSource(null)}
+        />
+      )}
     </div>
   );
 }

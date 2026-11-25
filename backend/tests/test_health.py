@@ -28,6 +28,20 @@ def test_root_endpoint() -> None:
     assert response.json()["service"] == "Astrid Downloader"
 
 
+def test_capacitor_android_origin_is_allowed() -> None:
+    response = client.options(
+        "/api/v1/media/analyze",
+        headers={
+            "Origin": "https://localhost",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,x-guest-token,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://localhost"
+
+
 @pytest.mark.asyncio
 async def test_readiness_endpoint_checks_database_dependencies_and_worker(
     monkeypatch: pytest.MonkeyPatch,

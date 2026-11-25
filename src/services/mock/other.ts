@@ -38,6 +38,9 @@ export function createMockHistoryService(): HistoryService {
       await delay(350);
       return [...mockDb.history];
     },
+    async remember(entry) {
+      mockDb.addHistory(entry);
+    },
     async remove(entryId) {
       await delay(120);
       mockDb.removeHistory(entryId);
@@ -106,6 +109,7 @@ export function createMockFileSystemService(): FileSystemService {
   return {
     async openFile() {
       await delay(300);
+      return null;
     },
     async downloadFile() {
       await delay(300);

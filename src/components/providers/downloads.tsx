@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -9,8 +10,13 @@ import {
 } from "@/hooks/use-downloads.ts";
 import { errorMessage } from "@/services/errors.ts";
 import { getServices, type DownloadJob } from "@/services/index.ts";
+import { historyEntryFromJob } from "@/services/history-storage.ts";
 import { getGuestToken } from "@/lib/guest.ts";
-import { BROWSER_DOWNLOADS_MODE } from "@/services/device-storage.ts";
+import {
+  BROWSER_DOWNLOADS_MODE,
+  NATIVE_DOCUMENTS_MODE,
+  requestNativeDownloadAccess,
+} from "@/services/device-storage.ts";
 
 type StatusStream = {
   start: () => void;
@@ -154,11 +160,16 @@ export default function DownloadsProvider({
         void queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
         void queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
         void queryClient.invalidateQueries({ queryKey: ["astrid", "overview"] });
-        if (
-          await getServices().fileSystem.getFolderName() ===
-          BROWSER_DOWNLOADS_MODE
-        ) {
+        const downloadMode = await getServices().fileSystem.getFolderName();
+        if (downloadMode === BROWSER_DOWNLOADS_MODE) {
           toast.success("Sent to browser downloads", { description: filename });
+        } else if (downloadMode === NATIVE_DOCUMENTS_MODE) {
+          toast.success(
+            Capacitor.getPlatform() === "android"
+              ? "Saved to Downloads/MediaDock"
+              : "Saved to MediaDock Documents",
+            { description: filename },
+          );
         } else {
           toast.success("Saved to your device", { description: filename });
         }
@@ -178,7 +189,11 @@ export default function DownloadsProvider({
     savingLegacyItems.current = true;
     try {
       const folderName = await services.fileSystem.getFolderName();
-      if (!folderName || folderName === BROWSER_DOWNLOADS_MODE) return;
+      if (
+        !folderName ||
+        folderName === BROWSER_DOWNLOADS_MODE ||
+        folderName === NATIVE_DOCUMENTS_MODE
+      ) return;
       const items = await services.library.list();
       for (const item of items) {
         if (!item.filePath || !item.id.startsWith("lib_")) continue;
@@ -224,6 +239,19 @@ export default function DownloadsProvider({
         }
         const previous = lastStatus.current.get(job.id);
         nextStatus.set(job.id, job.status);
+
+        if (previous !== job.status) {
+          const historyEntry = historyEntryFromJob(job);
+          if (historyEntry) {
+            try {
+              await getServices().history.remember(historyEntry);
+            } catch (error) {
+              toast.error(
+                errorMessage(error, "Could not save download details on this device."),
+              );
+            }
+          }
+        }
 
         if (previous !== job.status && previous !== undefined) {
           if (["completed", "failed", "cancelled"].includes(job.status)) {
@@ -342,7 +370,15 @@ export default function DownloadsProvider({
           if (!folderName) {
             folderName = await getServices().fileSystem.chooseFolder();
           }
-          if (!folderName) return null;
+          if (!folderName) {
+            toast.info("Download not queued", {
+              description: "Choose a download folder in Settings before starting.",
+            });
+            return null;
+          }
+          if (folderName === NATIVE_DOCUMENTS_MODE) {
+            await requestNativeDownloadAccess();
+          }
           const job = await downloads.start(request);
           notify({
             kind: "info",

@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Copy, FolderOpen, Search, Trash2 } from "lucide-react";
 import { PageContainer, Panel } from "@/components/layout.tsx";
+import MediaPlayerDialog from "@/components/media-player-dialog.tsx";
 import ViewModeToggle, { type ViewMode } from "@/components/view-mode-toggle.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useFileActions, useLibrary, useRemoveLibraryItem } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
-import type { LibraryItem } from "@/services/index.ts";
+import type { LibraryItem, MediaPlaybackSource } from "@/services/index.ts";
 
 export const Route = createFileRoute("/_app/completed")({
   head: () => ({ meta: [{ title: "Completed Downloads · MediaDock" }] }),
@@ -75,9 +76,15 @@ function Page() {
   const [kind, setKind] = useState<"all" | "video" | "audio">("all");
   const [sortBy, setSortBy] = useState<SortMode>("newest");
   const [view, setView] = useState<ViewMode>("grid");
+  const [playbackSource, setPlaybackSource] = useState<MediaPlaybackSource | null>(null);
   const libraryQuery = useLibrary();
   const { open, copyPath } = useFileActions();
   const removeItem = useRemoveLibraryItem();
+
+  const openMedia = async (id: string, filename: string, path?: string) => {
+    const source = await open(id, filename, path);
+    if (source) setPlaybackSource(source);
+  };
 
   const visible = useMemo(() => {
     const next = (libraryQuery.data ?? []).filter((item) => {
@@ -166,7 +173,7 @@ function Page() {
               <LibraryCard
                 key={item.id}
                 item={item}
-                onOpen={open}
+                onOpen={(id, filename, path) => void openMedia(id, filename, path)}
                 onCopy={copyPath}
                 onRemove={(item) => void removeItem(item)}
               />
@@ -201,7 +208,7 @@ function Page() {
                   >
                     <FolderOpen className="size-3.5" />
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => open(item.id, item.filename, item.filePath)}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void openMedia(item.id, item.filename, item.filePath)}>
                     Open
                   </Button>
                   <Button type="button" variant="ghost" size="sm" onClick={() => copyPath(item.filename)}>
@@ -216,6 +223,12 @@ function Page() {
           </div>
         )}
       </Panel>
+      {playbackSource && (
+        <MediaPlayerDialog
+          source={playbackSource}
+          onClose={() => setPlaybackSource(null)}
+        />
+      )}
     </PageContainer>
   );
 }

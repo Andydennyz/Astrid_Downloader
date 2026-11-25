@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 import yt_dlp
 
-from app.services.media_analyzer import MediaAnalysisError, analyze_media_url, detect_platform
+from app.services.media_analyzer import (
+    MediaAnalysisError,
+    analyze_media_url,
+    detect_platform,
+    resolve_media_preview,
+)
 
 
 def test_analyze_media_url_returns_extracted_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -65,6 +70,138 @@ def test_analyze_media_url_surfaces_extractor_failure(monkeypatch: pytest.Monkey
 
     with pytest.raises(MediaAnalysisError, match="video unavailable"):
         analyze_media_url("https://youtu.be/unavailable")
+
+
+def test_resolve_media_preview_prefers_a_progressive_muxed_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeYoutubeDL:
+        def __init__(self, options: dict):
+            self.options = options
+            assert options["skip_download"] is True
+
+        def __enter__(self) -> "FakeYoutubeDL":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def extract_info(self, url: str, download: bool) -> dict:
+            assert url == "https://youtube.com/watch?v=example"
+            assert download is False
+            return {
+                "formats": [
+                    {
+                        "url": "https://cdn.example/video-only.mp4",
+                        "protocol": "https",
+                        "ext": "mp4",
+                        "height": 1080,
+                        "vcodec": "avc1",
+                        "acodec": "none",
+                    },
+                    {
+                        "url": "https://cdn.example/muxed.mp4",
+                        "protocol": "https",
+                        "ext": "mp4",
+                        "height": 720,
+                        "vcodec": "avc1",
+                        "acodec": "mp4a",
+                        "http_headers": {
+                            "User-Agent": "MediaDock test",
+                            "Cookie": "must-not-be-forwarded",
+                        },
+                    },
+                ]
+            }
+
+    monkeypatch.setattr("app.services.media_analyzer.yt_dlp.YoutubeDL", FakeYoutubeDL)
+
+    result = resolve_media_preview("https://youtube.com/watch?v=example", "video")
+
+    assert result == {
+        "url": "https://cdn.example/muxed.mp4",
+        "headers": {
+            "User-Agent": "MediaDock test",
+            "Cookie": "must-not-be-forwarded",
+        },
+        "mimeType": "video/mp4",
+    }
+
+
+def test_resolve_media_preview_rejects_hls_only_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeYoutubeDL:
+        def __init__(self, options: dict):
+            pass
+
+        def __enter__(self) -> "FakeYoutubeDL":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def extract_info(self, url: str, download: bool) -> dict:
+            return {
+                "formats": [
+                    {
+                        "url": "https://cdn.example/master.m3u8",
+                        "protocol": "m3u8_native",
+                        "ext": "mp4",
+                        "vcodec": "avc1",
+                        "acodec": "mp4a",
+                    }
+                ]
+            }
+
+    monkeypatch.setattr("app.services.media_analyzer.yt_dlp.YoutubeDL", FakeYoutubeDL)
+
+    with pytest.raises(MediaAnalysisError, match="progressive stream"):
+        resolve_media_preview("https://twitch.tv/example", "video")
+
+
+def test_audio_preview_prefers_an_audio_only_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeYoutubeDL:
+        def __init__(self, options: dict):
+            pass
+
+        def __enter__(self) -> "FakeYoutubeDL":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def extract_info(self, url: str, download: bool) -> dict:
+            return {
+                "formats": [
+                    {
+                        "url": "https://cdn.example/video-with-audio.mp4",
+                        "protocol": "https",
+                        "ext": "mp4",
+                        "height": 720,
+                        "tbr": 1500,
+                        "vcodec": "avc1",
+                        "acodec": "mp4a",
+                    },
+                    {
+                        "url": "https://cdn.example/audio.m4a",
+                        "protocol": "https",
+                        "ext": "m4a",
+                        "tbr": 128,
+                        "vcodec": "none",
+                        "acodec": "mp4a",
+                    },
+                ]
+            }
+
+    monkeypatch.setattr("app.services.media_analyzer.yt_dlp.YoutubeDL", FakeYoutubeDL)
+
+    result = resolve_media_preview("https://soundcloud.com/example/track", "audio")
+
+    assert result["url"] == "https://cdn.example/audio.m4a"
+    assert result["mimeType"] == "audio/mp4"
 
 
 @pytest.mark.parametrize(

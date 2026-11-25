@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { format } from "date-fns";
 import { ArrowRight, Copy, MoreHorizontal, Play, RotateCcw, Trash2, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { Panel, PanelHeader } from "@/components/layout.tsx";
+import MediaPlayerDialog from "@/components/media-player-dialog.tsx";
 import MediaThumb from "@/components/media-thumb.tsx";
 import StatusBadge from "@/components/status-badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -20,10 +22,11 @@ import { useDownloads } from "@/hooks/use-downloads.ts";
 import { useFileActions, useRemoveHistoryEntry } from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
 import { errorMessage } from "@/services/errors.ts";
-import { getServices, type HistoryEntry } from "@/services/index.ts";
+import { getServices, type HistoryEntry, type MediaPlaybackSource } from "@/services/index.ts";
 import { outputFolder } from "../-lib/new-download.ts";
 
 function QuickActions({ entry }: { entry: HistoryEntry }) {
+  const [playbackSource, setPlaybackSource] = useState<MediaPlaybackSource | null>(null);
   const files = useFileActions();
   const { start } = useDownloads();
   const removeEntry = useRemoveHistoryEntry();
@@ -63,10 +66,14 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
     entry.filePath?.replace(/\\/g, "/").split("/").pop() ??
     "";
   return (
+    <>
     <div className="flex items-center justify-end gap-0.5">
       {hasFile ? (
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Open file" onClick={() => void files.open(entry.libraryId ?? entry.id, filename, entry.filePath)} />}>
+          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Open file" onClick={async () => {
+            const source = await files.open(entry.libraryId ?? entry.id, filename, entry.filePath);
+            if (source) setPlaybackSource(source);
+          }} />}>
             <Play />
           </TooltipTrigger>
           <TooltipContent>Open file</TooltipContent>
@@ -111,6 +118,13 @@ function QuickActions({ entry }: { entry: HistoryEntry }) {
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+    {playbackSource && (
+      <MediaPlayerDialog
+        source={playbackSource}
+        onClose={() => setPlaybackSource(null)}
+      />
+    )}
+    </>
   );
 }
 

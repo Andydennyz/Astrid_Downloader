@@ -166,5 +166,17 @@ export function createMockMediaService(): MediaService {
       if (!info) throw new ServiceError("NOT_FOUND", "Media not found. Analyze the link again.");
       return info.formats;
     },
+
+    async getPlaybackSource(mediaId, kind) {
+      await delay(150);
+      const info = cache.get(mediaId);
+      if (!info) throw new ServiceError("NOT_FOUND", "Media not found. Analyze the link again.");
+      return {
+        url: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+        title: info.title,
+        element: kind,
+        isHls: false,
+      };
+    },
   };
 }

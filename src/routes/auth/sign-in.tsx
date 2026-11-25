@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Input } from "@/components/ui/input.tsx";
+import { useAuth } from "@/hooks/use-auth.ts";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase.ts";
 
 export function SignInPage() {
   const navigate = useNavigate();
+  const auth = useAuth();
   const [provider, setProvider] = useState<"google" | "github" | null>(null);
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [email, setEmail] = useState("");
@@ -25,13 +27,11 @@ export function SignInPage() {
       setProvider(nextProvider);
       setError(null);
       setNotice(null);
-      const { error: signInError } = await supabase.auth.signInWithOAuth({
-        provider: nextProvider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (signInError) throw signInError;
+      if (nextProvider === "google") {
+        await auth.signInWithGoogle();
+      } else {
+        await auth.signInWithGitHub();
+      }
     } catch (caughtError) {
       const message =
         caughtError instanceof Error
@@ -241,12 +241,12 @@ export function SignInPage() {
           </p>
         ) : null}
 
-        {error ? (
+        {error ?? auth.error ? (
           <p
             role="alert"
             className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           >
-            {error}
+            {error ?? auth.error}
           </p>
         ) : null}
       </div>

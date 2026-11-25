@@ -8,6 +8,7 @@ import type {
   LibraryItem,
   LibraryQuery,
   MediaInfo,
+  MediaPlaybackSource,
   OverviewStats,
   UrlValidation,
 } from "./types.ts";
@@ -28,6 +29,11 @@ export type MediaService = {
   analyze: (url: string) => Promise<MediaInfo>;
   /** Suggested backend endpoint: GET /media/:id/formats */
   getFormats: (mediaId: string) => Promise<FormatOption[]>;
+  /** Resolves a short-lived, backend-streamed preview for analyzed media. */
+  getPlaybackSource: (
+    mediaId: string,
+    kind: "audio" | "video",
+  ) => Promise<MediaPlaybackSource>;
 };
 
 export type ClipboardService = {
@@ -74,6 +80,8 @@ export type LibraryService = {
 export type HistoryService = {
   /** Suggested backend endpoint: GET /history */
   list: () => Promise<HistoryEntry[]>;
+  /** Persists a terminal download record on this device. */
+  remember: (entry: HistoryEntry) => Promise<void>;
   /** Suggested backend endpoint: DELETE /history/:id */
   remove: (entryId: string) => Promise<void>;
   /** Suggested backend endpoint: DELETE /history */
@@ -88,7 +96,11 @@ export type StatsService = {
 
 /** Local filesystem bridge. A desktop shell (Tauri, Electron, native) implements this. */
 export type FileSystemService = {
-  openFile: (itemId: string, filename: string, serverPath?: string) => Promise<void>;
+  openFile: (
+    itemId: string,
+    filename: string,
+    serverPath?: string,
+  ) => Promise<MediaPlaybackSource | null>;
   downloadFile: (itemId: string, filename: string, serverPath?: string) => Promise<void>;
   removeFile: (itemId: string, filename: string) => Promise<void>;
   copyPath: (filename: string) => Promise<void>;

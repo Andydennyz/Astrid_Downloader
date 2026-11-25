@@ -1,6 +1,13 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useState } from "react";
+import { App } from "@capacitor/app";
+import { AppLauncher } from "@capacitor/app-launcher";
+import { Capacitor } from "@capacitor/core";
 import type { Session, User } from "@supabase/supabase-js";
 import { clearSupabaseSessionToken, hasSupabaseConfig, setSupabaseSessionToken, supabase } from "@/lib/supabase.ts";
+import {
+  NATIVE_AUTH_REDIRECT_URL,
+  parseNativeAuthCallback,
+} from "@/lib/native-auth-callback.ts";
 
 export type AuthState = {
   user: User | null;
@@ -17,6 +24,28 @@ const AuthContext = createContext<AuthState | null>(null);
 
 function syncSessionToken(nextSession: Session | null) {
   setSupabaseSessionToken(nextSession?.access_token ?? null);
+}
+
+async function signInWithOAuth(provider: "google" | "github") {
+  if (!supabase) return;
+  const isNative = Capacitor.isNativePlatform();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: isNative
+        ? NATIVE_AUTH_REDIRECT_URL
+        : `${window.location.origin}/auth/callback`,
+      skipBrowserRedirect: isNative,
+    },
+  });
+  if (error) throw error;
+
+  if (isNative) {
+    if (!data.url) {
+      throw new Error("Supabase did not return a sign-in URL.");
+    }
+    await AppLauncher.openUrl({ url: data.url });
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -62,6 +91,102 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    const client = supabase;
+    if (!hasSupabaseConfig || !client || !Capacitor.isNativePlatform()) {
+      return undefined;
+    }
+
+    let active = true;
+    const handledCodes = new Set<string>();
+    const finishSignIn = async (rawUrl: string) => {
+      const callback = parseNativeAuthCallback(rawUrl);
+      if (!callback) return;
+      if (callback.type === "error") {
+        if (active) setError(callback.message);
+        return;
+      }
+      if (callback.type === "missing") {
+        if (active) {
+          setError(
+            "The sign-in provider returned without an authorization code. Check the Supabase redirect URL and try again.",
+          );
+        }
+        return;
+      }
+
+      const callbackKey =
+        callback.type === "code"
+          ? `code:${callback.code}`
+          : `token:${callback.accessToken}`;
+      if (handledCodes.has(callbackKey)) return;
+      handledCodes.add(callbackKey);
+      try {
+        const { data, error: exchangeError } =
+          callback.type === "code"
+            ? await client.auth.exchangeCodeForSession(callback.code)
+            : await client.auth.setSession({
+                access_token: callback.accessToken,
+                refresh_token: callback.refreshToken,
+              });
+        if (exchangeError) throw exchangeError;
+        if (!data.session) {
+          throw new Error("Supabase did not return a signed-in session.");
+        }
+        if (active) {
+          setSession(data.session);
+          syncSessionToken(data.session);
+          setError(null);
+          window.location.replace("/");
+        }
+      } catch (callbackExchangeError) {
+        handledCodes.delete(callbackKey);
+        if (active) {
+          setError(
+            callbackExchangeError instanceof Error
+              ? callbackExchangeError.message
+              : "Could not complete sign-in. Please try again.",
+          );
+        }
+      }
+    };
+
+    const listener = App.addListener("appUrlOpen", ({ url }) => {
+      void finishSignIn(url);
+    });
+    void listener.catch((listenerError: unknown) => {
+      if (active) {
+        setError(
+          listenerError instanceof Error
+            ? listenerError.message
+            : "Could not listen for the sign-in callback.",
+        );
+      }
+    });
+    void App.getLaunchUrl()
+      .then((launch) => {
+        if (active && launch?.url) void finishSignIn(launch.url);
+      })
+      .catch((launchError: unknown) => {
+        if (active) {
+          setError(
+            launchError instanceof Error
+              ? launchError.message
+              : "Could not read the app sign-in callback.",
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+      void listener
+        .then((handle) => handle.remove())
+        .catch((listenerError: unknown) => {
+          console.error("Could not remove the sign-in callback listener.", listenerError);
+        });
+    };
+  }, []);
+
   const value = useMemo<AuthState>(() => ({
     user: session?.user ?? null,
     session,
@@ -69,24 +194,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading: !ready,
     ready,
     signInWithGoogle: async () => {
-      if (!supabase) return;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
+      setError(null);
+      await signInWithOAuth("google");
     },
     signInWithGitHub: async () => {
-      if (!supabase) return;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "github",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
+      setError(null);
+      await signInWithOAuth("github");
     },
     signOut: async () => {
       if (!supabase) return;

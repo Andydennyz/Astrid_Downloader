@@ -17,6 +17,11 @@ Use Python 3.13 for the backend runtime. The project dependencies currently targ
 Python 3.13 toolchain; Python 3.14 is not yet compatible with the async database and
 pydantic build chain.
 
+The Fly image uses the public Supabase Root 2021 CA at
+`backend/certs/prod-ca-2021.crt` to verify PostgreSQL TLS connections. Keep this public
+certificate with the backend source; database credentials and other secrets belong in
+Fly secrets, not in the image.
+
 For the full local Docker stack, follow the Docker setup in the repository-root
 [README](../README.md). Compose mounts `docker.env` at runtime, keeps the API on the
 internal Docker network, and persists downloads/database files in the repository's
@@ -115,3 +120,4 @@ vendor is required for this setup.
 - Supabase Auth JWTs are validated using the Supabase JWKS endpoint, including RSA/RS256
   and EC P-256/ES256 signing keys.
 - YouTube extraction uses the current yt-dlp release and its `default` extras; install Node.js or Deno as a JavaScript runtime for YouTube signature challenges.
+- In-app previews use short-lived encrypted tickets and relay progressive audio/video streams with HTTP range support. Preview bytes are streamed, not staged in the download storage. HLS-only, DRM-protected, and login/cookie-gated sources are not supported by this preview endpoint.

@@ -10,6 +10,7 @@ export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseKey);
 export const supabase = hasSupabaseConfig
   ? createClient(supabaseUrl!, supabaseKey!, {
       auth: {
+        flowType: "pkce",
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,

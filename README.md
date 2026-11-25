@@ -86,6 +86,79 @@ which are intended to be visible to browsers. `SUPABASE_SERVICE_ROLE_KEY`,
 `DATABASE_URL`, `SUPABASE_JWT_SECRET`, and `SECRET_KEY` must remain in the
 backend settings file.
 
+## Android APK build
+
+From the repository root, configure the public frontend values
+`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (or
+`VITE_SUPABASE_ANON_KEY`), and `VITE_API_BASE_URL`. For Android,
+`VITE_API_BASE_URL` must be the absolute deployed API URL, such as
+`https://astrid-downloader-api.fly.dev/api/v1`.
+
+For Android OAuth sign-in, add this exact URL to **Supabase Dashboard →
+Authentication → URL Configuration → Redirect URLs**:
+
+```text
+com.mediadock.app://auth-callback
+```
+
+The Android app opens Google or GitHub in the system browser and returns to this
+custom URL to complete the PKCE session. The Cloudflare web app continues to
+use its normal `/auth/callback` URL. Download history metadata is cached on the
+device for guest and signed-in users; signed-in history is also stored by the
+backend in the configured database. **Clear history** removes the records from
+both places but leaves downloaded media files intact. Clearing Android app
+storage also removes its local metadata. Android downloads are saved to the shared
+`Downloads/MediaDock/` folder, organized into media-type subfolders. Android 10
+and newer use scoped storage, so no broad storage permission prompt is needed;
+older Android versions request storage access when saving. Opening **Device
+Media** separately requests Android's audio/video read permissions to list
+phone media; it does not request all-files access. Browser downloads and folder
+selection on the web are unchanged.
+
+Build and sync the Android web assets from the repository root:
+
+```powershell
+npm run build:android
+npx cap sync android
+```
+
+Then build the APK:
+
+```powershell
+Set-Location android
+.\gradlew.bat assembleDebug
+```
+
+The debug APK is written to
+`android\app\build\outputs\apk\debug\app-debug.apk`.
+
+## Direct media player
+
+The Direct Player page opens direct HTTP(S) video/audio URLs, HLS/M3U8 streams,
+and local media selected through the device file picker. HLS playback uses
+hls.js when native browser playback is unavailable; the stream host must allow
+cross-origin requests. Webpage links, DRM-protected media, and RTSP are not
+supported by this player.
+
+After analyzing a link on **New Download**, use **Watch without downloading** or
+**Listen without downloading** to stream a supported platform source in the app.
+The backend relays the progressive stream to the player; it does not save a copy
+to the phone, but the stream uses backend bandwidth. Sources that only provide
+segmented HLS, DRM-protected media, or require platform login/cookies may not
+preview. Library playback also stays inside the app and can be closed with the
+back button or **Back to app**.
+
+## M3U playlists
+
+The Playlists page imports channel-style `.m3u` catalogs from HTTP(S) URLs,
+validates their contents before saving, and displays available channel names,
+groups, and logos. Saved playlists and favorites are stored in the current
+device/browser only. The playlist host must allow cross-origin requests (CORS)
+for the browser to import it. HLS `.m3u8` stream playlists are not channel
+catalogs; open those from Direct Player.
+Use JDK 17 through 24 for the current Gradle wrapper (JDK 21 is recommended);
+Java 25 is not supported by this Gradle version.
+
 ## Vite template notes
 
 # React + TypeScript + Vite

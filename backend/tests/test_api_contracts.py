@@ -593,3 +593,94 @@ def test_formats_cache_is_user_scoped_and_invalid_media_urls_are_rejected(api_cl
     finally:
         media_api._MEDIA_CACHE.pop(("user-1", "cached-media"), None)
         media_api._MEDIA_CACHE.pop(("user-2", "cached-media"), None)
+
+
+def test_media_preview_requires_analyzed_owned_media_and_returns_an_encrypted_ticket(
+    api_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, auth = api_client
+    media_id = "preview-media"
+    media_api._MEDIA_CACHE[("user-1", media_id)] = {
+        "sourceUrl": "https://www.youtube.com/watch?v=preview",
+        "title": "Preview video",
+    }
+    monkeypatch.setattr(
+        media_api,
+        "resolve_media_preview",
+        lambda source_url, kind: {
+            "url": "https://cdn.example/video.mp4?signature=private",
+            "headers": {"User-Agent": "MediaDock"},
+            "mimeType": "video/mp4",
+        },
+    )
+    try:
+        assert client.post(
+            "/api/v1/media/not-owned/preview",
+            json={"kind": "video"},
+        ).status_code == 404
+
+        response = client.post(
+            f"/api/v1/media/{media_id}/preview",
+            json={"kind": "video"},
+        )
+        assert response.status_code == 200
+        assert response.json()["title"] == "Preview video"
+        assert response.json()["element"] == "video"
+        assert response.json()["isHls"] is False
+        ticket = response.json()["ticket"]
+        assert "cdn.example" not in ticket
+        assert "private" not in ticket
+
+        auth["user_id"] = "user-2"
+        assert client.post(
+            f"/api/v1/media/{media_id}/preview",
+            json={"kind": "video"},
+        ).status_code == 404
+    finally:
+        media_api._MEDIA_CACHE.pop(("user-1", media_id), None)
+
+
+def test_preview_stream_forwards_single_range_requests(
+    api_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, _ = api_client
+    observed: dict[str, object] = {}
+
+    class FakeUpstream:
+        status_code = 206
+        headers = {
+            "accept-ranges": "bytes",
+            "content-length": "5",
+            "content-range": "bytes 0-4/10",
+        }
+
+        async def aiter_raw(self):
+            yield b"video"
+
+        async def aclose(self) -> None:
+            return None
+
+    async def open_stream(client, url: str, headers: dict[str, str]):
+        observed["url"] = url
+        observed["range"] = headers.get("range")
+        return FakeUpstream()
+
+    monkeypatch.setattr(media_api, "_open_public_stream", open_stream)
+    ticket = media_api.create_media_preview_ticket(
+        "https://cdn.example/video.mp4",
+        {},
+        "video/mp4",
+    )
+
+    response = client.get(
+        f"/api/v1/media/preview-stream/{ticket}",
+        headers={"Range": "bytes=0-4"},
+    )
+
+    assert response.status_code == 206
+    assert response.content == b"video"
+    assert response.headers["content-range"] == "bytes 0-4/10"
+    assert observed == {
+        "url": "https://cdn.example/video.mp4",
+        "range": "bytes=0-4",
+    }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+import mimetypes
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -148,4 +149,134 @@ def analyze_media_url(url: str) -> dict[str, Any]:
         "uploadedAt": _format_uploaded_at(info),
         "description": info.get("description"),
         "formats": _format_formats(info),
+    }
+
+
+def resolve_media_preview(url: str, kind: str) -> dict[str, Any]:
+    if kind not in {"audio", "video"}:
+        raise ValueError("A valid media type is required.")
+
+    ydl_opts = {
+        "skip_download": True,
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": False,
+        "noplaylist": True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except yt_dlp.utils.YoutubeDLError as exc:
+        raise MediaAnalysisError(f"Could not prepare media playback: {exc}") from exc
+
+    if not info:
+        raise MediaAnalysisError("The media source returned no playable stream.")
+
+    formats = info.get("formats") or []
+    candidates = []
+    for entry in formats:
+        stream_url = entry.get("url")
+        protocol = str(entry.get("protocol") or "")
+        has_video = entry.get("vcodec") not in (None, "none")
+        has_audio = entry.get("acodec") not in (None, "none")
+        if (
+            not isinstance(stream_url, str)
+            or not stream_url.startswith(("http://", "https://"))
+            or protocol not in {"http", "https"}
+            or (kind == "video" and not (has_video and has_audio))
+            or (kind == "audio" and not has_audio)
+        ):
+            continue
+        candidates.append(entry)
+
+    if candidates:
+        def preview_quality(entry: dict[str, Any]) -> tuple[bool | int, float]:
+            if kind == "video":
+                return (
+                    int(entry.get("height") or 0),
+                    float(entry.get("tbr") or 0),
+                )
+            return (
+                entry.get("vcodec") in (None, "none"),
+                float(entry.get("tbr") or 0),
+            )
+
+        selected = max(
+            candidates,
+            key=preview_quality,
+        )
+    else:
+        if formats:
+            raise MediaAnalysisError(
+                "This source does not provide a progressive stream for in-app preview. "
+                "Try downloading it, or use Direct Player with a direct media link."
+            )
+        selected = info
+        stream_url = selected.get("url")
+        protocol = str(selected.get("protocol") or "")
+        if (
+            not isinstance(stream_url, str)
+            or not stream_url.startswith(("http://", "https://"))
+            or protocol not in {"", "http", "https"}
+            or "m3u8" in protocol.lower()
+            or str(selected.get("ext") or "").lower() == "m3u8"
+        ):
+            raise MediaAnalysisError(
+                "This source does not provide a progressive stream for in-app preview. "
+                "Try downloading it, or use Direct Player with a direct media link."
+            )
+
+    stream_url = selected.get("url")
+    if not isinstance(stream_url, str):
+        raise MediaAnalysisError("The media source did not provide a playable stream.")
+
+    extension = str(selected.get("ext") or "").lower()
+    if extension == "m3u8" or "m3u8" in str(selected.get("protocol") or "").lower():
+        raise MediaAnalysisError(
+            "This source only provides an HLS playlist for preview. "
+            "Use Direct Player with a direct M3U8 link instead."
+        )
+    parsed = urlsplit(stream_url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise MediaAnalysisError("The media source returned an invalid playback URL.")
+
+    mime_type = selected.get("mime_type")
+    if isinstance(mime_type, str):
+        mime_type = mime_type.split(";", 1)[0].strip()
+    else:
+        mime_type = mimetypes.guess_type(f"media.{extension}")[0]
+    if not isinstance(mime_type, str) or not mime_type.startswith(
+        "audio/" if kind == "audio" else "video/"
+    ):
+        if kind == "audio":
+            mime_type = {
+                "m4a": "audio/mp4",
+                "mp4": "audio/mp4",
+                "ogg": "audio/ogg",
+                "opus": "audio/ogg",
+                "webm": "audio/webm",
+            }.get(extension, "audio/mpeg")
+        else:
+            mime_type = "video/mp4"
+
+    raw_headers = selected.get("http_headers") or info.get("http_headers") or {}
+    headers = (
+        {
+            str(name): str(value)
+            for name, value in raw_headers.items()
+            if isinstance(name, str) and isinstance(value, str)
+        }
+        if isinstance(raw_headers, dict)
+        else {}
+    )
+    return {
+        "url": stream_url,
+        "headers": headers,
+        "mimeType": mime_type,
     }

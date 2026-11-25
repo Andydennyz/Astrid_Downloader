@@ -67,6 +67,14 @@ export type MediaInfo = {
   formats: FormatOption[];
 };
 
+export type MediaPlaybackSource = {
+  url: string;
+  title: string;
+  element: "audio" | "video";
+  isHls: boolean;
+  isObjectUrl?: boolean;
+};
+
 /** The user's format choice, sent to the backend as preferences, not logic. */
 export type FormatSelection = {
   mode: DownloadMode;

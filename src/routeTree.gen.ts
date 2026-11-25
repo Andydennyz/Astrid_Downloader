@@ -13,8 +13,11 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAudioRouteImport } from './routes/_app/audio'
 import { Route as AppCompletedRouteImport } from './routes/_app/completed'
+import { Route as AppDeviceMediaRouteImport } from './routes/_app/device-media'
 import { Route as AppHistoryRouteImport } from './routes/_app/history'
 import { Route as AppNewRouteImport } from './routes/_app/new'
+import { Route as AppPlayerRouteImport } from './routes/_app/player'
+import { Route as AppPlaylistsRouteImport } from './routes/_app/playlists'
 import { Route as AppQueueRouteImport } from './routes/_app/queue'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppVideoRouteImport } from './routes/_app/video'
@@ -40,6 +43,11 @@ const AppCompletedRoute = AppCompletedRouteImport.update({
   path: '/completed',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDeviceMediaRoute = AppDeviceMediaRouteImport.update({
+  id: '/device-media',
+  path: '/device-media',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppHistoryRoute = AppHistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -48,6 +56,16 @@ const AppHistoryRoute = AppHistoryRouteImport.update({
 const AppNewRoute = AppNewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlayerRoute = AppPlayerRouteImport.update({
+  id: '/player',
+  path: '/player',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlaylistsRoute = AppPlaylistsRouteImport.update({
+  id: '/playlists',
+  path: '/playlists',
   getParentRoute: () => AppRoute,
 } as any)
 const AppQueueRoute = AppQueueRouteImport.update({
@@ -80,8 +98,11 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/audio': typeof AppAudioRoute
   '/completed': typeof AppCompletedRoute
+  '/device-media': typeof AppDeviceMediaRoute
   '/history': typeof AppHistoryRoute
   '/new': typeof AppNewRoute
+  '/player': typeof AppPlayerRoute
+  '/playlists': typeof AppPlaylistsRoute
   '/queue': typeof AppQueueRoute
   '/settings': typeof AppSettingsRoute
   '/video': typeof AppVideoRoute
@@ -91,8 +112,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/audio': typeof AppAudioRoute
   '/completed': typeof AppCompletedRoute
+  '/device-media': typeof AppDeviceMediaRoute
   '/history': typeof AppHistoryRoute
   '/new': typeof AppNewRoute
+  '/player': typeof AppPlayerRoute
+  '/playlists': typeof AppPlaylistsRoute
   '/queue': typeof AppQueueRoute
   '/settings': typeof AppSettingsRoute
   '/video': typeof AppVideoRoute
@@ -105,8 +129,11 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_app/audio': typeof AppAudioRoute
   '/_app/completed': typeof AppCompletedRoute
+  '/_app/device-media': typeof AppDeviceMediaRoute
   '/_app/history': typeof AppHistoryRoute
   '/_app/new': typeof AppNewRoute
+  '/_app/player': typeof AppPlayerRoute
+  '/_app/playlists': typeof AppPlaylistsRoute
   '/_app/queue': typeof AppQueueRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/video': typeof AppVideoRoute
@@ -120,8 +147,11 @@ export interface FileRouteTypes {
     | '/'
     | '/audio'
     | '/completed'
+    | '/device-media'
     | '/history'
     | '/new'
+    | '/player'
+    | '/playlists'
     | '/queue'
     | '/settings'
     | '/video'
@@ -131,8 +161,11 @@ export interface FileRouteTypes {
   to:
     | '/audio'
     | '/completed'
+    | '/device-media'
     | '/history'
     | '/new'
+    | '/player'
+    | '/playlists'
     | '/queue'
     | '/settings'
     | '/video'
@@ -144,8 +177,11 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_app/audio'
     | '/_app/completed'
+    | '/_app/device-media'
     | '/_app/history'
     | '/_app/new'
+    | '/_app/player'
+    | '/_app/playlists'
     | '/_app/queue'
     | '/_app/settings'
     | '/_app/video'
@@ -190,6 +226,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompletedRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/device-media': {
+      id: '/_app/device-media'
+      path: '/device-media'
+      fullPath: '/device-media'
+      preLoaderRoute: typeof AppDeviceMediaRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/history': {
       id: '/_app/history'
       path: '/history'
@@ -202,6 +245,20 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof AppNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/player': {
+      id: '/_app/player'
+      path: '/player'
+      fullPath: '/player'
+      preLoaderRoute: typeof AppPlayerRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/playlists': {
+      id: '/_app/playlists'
+      path: '/playlists'
+      fullPath: '/playlists'
+      preLoaderRoute: typeof AppPlaylistsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/queue': {
@@ -245,8 +302,11 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAudioRoute: typeof AppAudioRoute
   AppCompletedRoute: typeof AppCompletedRoute
+  AppDeviceMediaRoute: typeof AppDeviceMediaRoute
   AppHistoryRoute: typeof AppHistoryRoute
   AppNewRoute: typeof AppNewRoute
+  AppPlayerRoute: typeof AppPlayerRoute
+  AppPlaylistsRoute: typeof AppPlaylistsRoute
   AppQueueRoute: typeof AppQueueRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppVideoRoute: typeof AppVideoRoute
@@ -256,8 +316,11 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAudioRoute: AppAudioRoute,
   AppCompletedRoute: AppCompletedRoute,
+  AppDeviceMediaRoute: AppDeviceMediaRoute,
   AppHistoryRoute: AppHistoryRoute,
   AppNewRoute: AppNewRoute,
+  AppPlayerRoute: AppPlayerRoute,
+  AppPlaylistsRoute: AppPlaylistsRoute,
   AppQueueRoute: AppQueueRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppVideoRoute: AppVideoRoute,

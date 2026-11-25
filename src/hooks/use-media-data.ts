@@ -61,9 +61,10 @@ export function useFileActions() {
   return {
     open: async (itemId: string, filename: string, serverPath?: string) => {
       try {
-        await fileSystem.openFile(itemId, filename, serverPath);
+        return await fileSystem.openFile(itemId, filename, serverPath);
       } catch (error) {
         toast.error(errorMessage(error, "Could not open the media file."));
+        return null;
       }
     },
     download: async (itemId: string, filename: string, serverPath?: string) => {
@@ -128,6 +129,21 @@ export function useRemoveHistoryEntry() {
       toast.success("History entry deleted");
     } catch (error) {
       toast.error(errorMessage(error, "Could not delete this history entry."));
+    }
+  };
+}
+
+export function useClearHistory() {
+  const queryClient = useQueryClient();
+  return async () => {
+    try {
+      await getServices().history.clear();
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "history"] });
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "library"] });
+      await queryClient.invalidateQueries({ queryKey: ["astrid", "overview"] });
+      toast.success("History cleared");
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not clear download history."));
     }
   };
 }

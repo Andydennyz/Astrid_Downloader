@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import ipaddress
 import json
+import re
+import socket
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,13 +20,18 @@ from app.core.config import settings
 from app.database.connection import get_db
 from app.database.models import DownloadJob, HistoryItem, LibraryItem, User
 from app.repositories.user_repository import UserRepository
-from app.schemas.media import DeviceSavedRequest, DownloadJobResponse, DownloadRequestSchema, FileOpenSessionRequest, MediaAnalyzeRequest, MediaInfoResponse
+from app.schemas.media import DeviceSavedRequest, DownloadJobResponse, DownloadRequestSchema, FileOpenSessionRequest, MediaAnalyzeRequest, MediaInfoResponse, MediaPreviewRequest
 from app.services.downloader import queue_download_job, stop_download_job
 from app.services.file_access import create_file_access_ticket, read_file_access_ticket
+from app.services.media_preview_access import (
+    create_media_preview_ticket,
+    read_media_preview_ticket,
+)
 from app.services.media_analyzer import (
     MediaAnalysisError,
     analyze_media_url,
     detect_platform,
+    resolve_media_preview,
 )
 from app.services.storage import StorageError, resolve_destination, storage_disk_free_bytes, user_storage_root
 
@@ -50,6 +59,49 @@ _GUEST_MEDIA_DOMAINS = (
     "dailymotion.com",
     "dai.ly",
 )
+
+
+def _validate_public_stream_host(url: str) -> None:
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Invalid media stream URL.")
+    try:
+        try:
+            addresses = {ipaddress.ip_address(parsed.hostname)}
+        except ValueError:
+            addresses = {
+                ipaddress.ip_address(result[4][0])
+                for result in socket.getaddrinfo(
+                    parsed.hostname,
+                    parsed.port or (443 if parsed.scheme == "https" else 80),
+                    type=socket.SOCK_STREAM,
+                )
+            }
+    except (OSError, ValueError) as exc:
+        raise ValueError("Could not resolve the media host.") from exc
+    if not addresses or any(not address.is_global for address in addresses):
+        raise ValueError("Media previews cannot access private network hosts.")
+
+
+async def _open_public_stream(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict[str, str],
+) -> httpx.Response:
+    for _ in range(6):
+        _validate_public_stream_host(url)
+        upstream = await client.send(
+            client.build_request("GET", url, headers=headers),
+            stream=True,
+        )
+        if upstream.status_code not in {301, 302, 303, 307, 308}:
+            return upstream
+        location = upstream.headers.get("location")
+        await upstream.aclose()
+        if not location:
+            return upstream
+        url = urljoin(url, location)
+    raise httpx.TooManyRedirects("Media host redirected too many times.")
 
 
 def _validate_guest_media_url(current_user: AuthUser, url: str) -> None:
@@ -189,6 +241,114 @@ async def analyze_media(payload: MediaAnalyzeRequest, current_user: AuthUser = D
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     _MEDIA_CACHE[(current_user.user_id, str(data["id"]))] = data
     return MediaInfoResponse(**data)
+
+
+@router.post("/media/{media_id}/preview")
+async def create_media_preview(
+    media_id: str,
+    payload: MediaPreviewRequest,
+    current_user: AuthUser = Depends(get_current_user_or_guest),
+) -> dict:
+    data = _MEDIA_CACHE.get((current_user.user_id, media_id))
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media was not analyzed yet.",
+        )
+    if detect_platform(data["sourceUrl"]) == "other":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Only supported platform pages can be streamed through the backend. "
+                "Direct media URLs can be played directly in the app."
+            ),
+        )
+    try:
+        preview = resolve_media_preview(data["sourceUrl"], payload.kind)
+    except MediaAnalysisError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    ticket = create_media_preview_ticket(
+        preview["url"],
+        preview["headers"],
+        preview["mimeType"],
+    )
+    return {
+        "ticket": ticket,
+        "title": data["title"],
+        "element": payload.kind,
+        "isHls": False,
+    }
+
+
+@router.get("/media/preview-stream/{ticket}", include_in_schema=False)
+async def stream_media_preview(ticket: str, request: Request) -> StreamingResponse:
+    try:
+        stream_url, upstream_headers, mime_type = read_media_preview_ticket(ticket)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media preview expired. Open the preview again.",
+        ) from exc
+
+    range_header = request.headers.get("range")
+    if range_header:
+        if len(range_header) > 128 or not re.fullmatch(r"bytes=\d*-\d*", range_header):
+            raise HTTPException(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                detail="Only a single byte range can be previewed.",
+            )
+        upstream_headers["range"] = range_header
+    client = httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=20, read=None, write=20, pool=10),
+        trust_env=False,
+    )
+    try:
+        upstream = await _open_public_stream(client, stream_url, upstream_headers)
+    except (httpx.HTTPError, ValueError) as exc:
+        await client.aclose()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The media host could not start the preview stream.",
+        ) from exc
+
+    if upstream.status_code not in {200, 206}:
+        await upstream.aclose()
+        await client.aclose()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"The media host returned HTTP {upstream.status_code}.",
+        )
+
+    response_headers = {
+        "Content-Type": mime_type,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    for header in (
+        "accept-ranges",
+        "content-length",
+        "content-range",
+        "content-encoding",
+    ):
+        if header in upstream.headers:
+            response_headers[header.title()] = upstream.headers[header]
+
+    async def stream_body():
+        try:
+            async for chunk in upstream.aiter_raw():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        stream_body(),
+        status_code=upstream.status_code,
+        headers=response_headers,
+    )
 
 
 @router.get("/media/{media_id}/formats")

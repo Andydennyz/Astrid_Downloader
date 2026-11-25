@@ -7,7 +7,11 @@ import ViewModeToggle, { type ViewMode } from "@/components/view-mode-toggle.tsx
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import StatusBadge from "@/components/status-badge.tsx";
-import { useHistory, useRemoveHistoryEntry } from "@/hooks/use-media-data.ts";
+import {
+  useClearHistory,
+  useHistory,
+  useRemoveHistoryEntry,
+} from "@/hooks/use-media-data.ts";
 import { formatBytes, formatDuration } from "@/lib/format.ts";
 import type { HistoryEntry } from "@/services/types.ts";
 
@@ -63,6 +67,7 @@ function Page() {
   const [now, setNow] = useState(() => Date.now());
   const historyQuery = useHistory();
   const removeEntry = useRemoveHistoryEntry();
+  const clearHistory = useClearHistory();
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -95,6 +100,24 @@ function Page() {
           <div className="rounded-full border border-border bg-card/70 px-3 py-1.5 text-sm text-muted-foreground">
             {historyQuery.data?.length ?? 0} entries
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!historyQuery.data?.length || historyQuery.isLoading}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Clear all history metadata from this device and your account? Downloaded media files will remain.",
+                )
+              ) {
+                void clearHistory();
+              }
+            }}
+          >
+            <Trash2 className="mr-1 size-3.5" />
+            Clear history
+          </Button>
         </div>
       </div>
       {historyQuery.isError && (

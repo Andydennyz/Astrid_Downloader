@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageContainer, Panel } from "@/components/layout.tsx";
@@ -8,7 +9,10 @@ import { Switch } from "@/components/ui/switch.tsx";
 import { SETTINGS_QUERY_KEY, useSettings } from "@/hooks/use-media-data.ts";
 import { getServices, type AppSettings } from "@/services/index.ts";
 import { errorMessage } from "@/services/errors.ts";
-import { BROWSER_DOWNLOADS_MODE } from "@/services/device-storage.ts";
+import {
+  BROWSER_DOWNLOADS_MODE,
+  NATIVE_DOCUMENTS_MODE,
+} from "@/services/device-storage.ts";
 import { toast } from "sonner";
 import { FolderOpen } from "lucide-react";
 
@@ -109,16 +113,24 @@ function Page() {
             <h3 className="text-lg font-semibold">General</h3>
           </div>
           <div className="space-y-4">
-            <SettingsRow label="Download folder on this device" hint="Choose a folder in a supported browser over HTTPS or localhost. Otherwise, downloads still go to your browser's standard Downloads location.">
+            <SettingsRow label="Download folder on this device" hint="Choose a folder in a supported browser over HTTPS or localhost. Android saves media to shared Downloads/MediaDock; other native platforms use app Documents, and unsupported browsers use their standard Downloads location.">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground" title={deviceFolder ?? undefined}>
                   {deviceFolder === BROWSER_DOWNLOADS_MODE
                     ? "Browser's standard download location"
+                    : deviceFolder === NATIVE_DOCUMENTS_MODE
+                      ? Capacitor.getPlatform() === "android"
+                        ? "Downloads/MediaDock"
+                        : "MediaDock Documents"
                     : deviceFolder ?? "No folder selected"}
                 </span>
                 {deviceFolder === BROWSER_DOWNLOADS_MODE ? (
                   <span className="shrink-0 rounded-lg border px-2.5 py-2 text-xs text-muted-foreground">
                     Browser downloads
+                  </span>
+                ) : deviceFolder === NATIVE_DOCUMENTS_MODE ? (
+                  <span className="shrink-0 rounded-lg border px-2.5 py-2 text-xs text-muted-foreground">
+                    Android
                   </span>
                 ) : (
                   <Button

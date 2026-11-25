@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { Download, Play, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import MediaPlayerDialog from "@/components/media-player-dialog.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { useDownloads } from "@/hooks/use-downloads.ts";
 import { useFileActions, useRemoveLibraryItem } from "@/hooks/use-media-data.ts";
 import { errorMessage } from "@/services/errors.ts";
 import { getServices, type LibraryItem } from "@/services/index.ts";
+import type { MediaPlaybackSource } from "@/services/types.ts";
 import { buildRedownloadRequest, getHttpSourceUrl } from "../-lib/new-download.ts";
 
 export function MediaSourceLink({
@@ -32,6 +35,7 @@ export default function LibraryItemActions({
   item: LibraryItem;
   layout: "grid" | "list";
 }) {
+  const [previewSource, setPreviewSource] = useState<MediaPlaybackSource | null>(null);
   const { open, download } = useFileActions();
   const { start } = useDownloads();
   const removeItem = useRemoveLibraryItem();
@@ -54,59 +58,70 @@ export default function LibraryItemActions({
   };
 
   return (
-    <div
-      className={
-        layout === "grid"
-          ? "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2"
-          : "flex flex-wrap gap-2"
-      }
-    >
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className={layout === "grid" ? "min-w-0" : "min-w-0 flex-1"}
-        onClick={() => void open(item.id, item.filename, item.filePath)}
-      >
-        <Play />
-        {playLabel}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className={layout === "grid" ? "min-w-0" : "min-w-0 flex-1"}
-        title="Download this saved media to your device"
-        onClick={() =>
-          void download(item.id, item.filename, item.filePath || undefined)
-        }
-      >
-        <Download />
-        Download
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
+    <>
+      <div
         className={
-          layout === "grid" ? "col-span-2 min-w-0" : "min-w-0 flex-1"
+          layout === "grid"
+            ? "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2"
+            : "flex flex-wrap gap-2"
         }
-        disabled={!sourceUrl}
-        title={sourceUrl ? "Download this media again" : "Original source link is unavailable"}
-        onClick={() => void downloadAgain()}
       >
-        <RotateCcw />
-        Download again
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        aria-label={`Delete ${item.title}`}
-        onClick={() => void removeItem(item)}
-      >
-        <Trash2 className="size-3.5" />
-      </Button>
-    </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={layout === "grid" ? "min-w-0" : "min-w-0 flex-1"}
+          onClick={async () => {
+            const source = await open(item.id, item.filename, item.filePath);
+            if (source) setPreviewSource(source);
+          }}
+        >
+          <Play />
+          {playLabel}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={layout === "grid" ? "min-w-0" : "min-w-0 flex-1"}
+          title="Download this saved media to your device"
+          onClick={() =>
+            void download(item.id, item.filename, item.filePath || undefined)
+          }
+        >
+          <Download />
+          Download
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className={
+            layout === "grid" ? "col-span-2 min-w-0" : "min-w-0 flex-1"
+          }
+          disabled={!sourceUrl}
+          title={sourceUrl ? "Download this media again" : "Original source link is unavailable"}
+          onClick={() => void downloadAgain()}
+        >
+          <RotateCcw />
+          Download again
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Delete ${item.title}`}
+          onClick={() => void removeItem(item)}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+      {previewSource && (
+        <MediaPlayerDialog
+          source={previewSource}
+          onClose={() => setPreviewSource(null)}
+        />
+      )}
+    </>
   );
 }
