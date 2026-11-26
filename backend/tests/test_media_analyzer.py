@@ -239,6 +239,22 @@ def test_format_height_uses_short_edge_for_portrait_video() -> None:
     assert formats[0]["height"] == 1080
 
 
+def test_format_sizes_ignore_zero_and_use_positive_approximation() -> None:
+    from app.services.media_analyzer import _format_formats
+
+    formats = _format_formats(
+        {
+            "formats": [
+                {"format_id": "unknown", "filesize": 0, "filesize_approx": 0},
+                {"format_id": "estimated", "filesize": 0, "filesize_approx": 4096},
+            ]
+        }
+    )
+
+    assert formats[0]["estimatedSizeBytes"] is None
+    assert formats[1]["estimatedSizeBytes"] == 4096
+
+
 def test_installed_yt_dlp_has_extractors_for_requested_social_sites() -> None:
     from yt_dlp.extractor import gen_extractors
 

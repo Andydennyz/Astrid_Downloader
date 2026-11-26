@@ -103,11 +103,18 @@ com.mediadock.app://auth-callback
 
 The Android app opens Google or GitHub in the system browser and returns to this
 custom URL to complete the PKCE session. The Cloudflare web app continues to
-use its normal `/auth/callback` URL. Download history metadata is cached on the
-device for guest and signed-in users; signed-in history is also stored by the
-backend in the configured database. **Clear history** removes the records from
-both places but leaves downloaded media files intact. Clearing Android app
-storage also removes its local metadata. Android downloads are saved to the shared
+use its normal `/auth/callback` URL. Download history and completed-library
+metadata are cached on Android for guest and signed-in users; signed-in metadata
+is also stored by the backend in the configured database. Android overview
+counts and library pages combine the account records with this device cache.
+On the Android **New Download** page, a copied media URL can be pasted from the
+clipboard. Sharing a text link from another app also opens MediaDock with the
+link ready for analysis. Downloads are limited to public, accessible sources
+supported by yt-dlp; platform logins, private media, DRM, and anti-bot blocks
+can prevent analysis or downloading.
+**Clear history** removes history metadata from both places but leaves
+downloaded media files intact. Clearing Android app storage also removes its
+local metadata. Android downloads are saved to the shared
 `Downloads/MediaDock/` folder, organized into media-type subfolders. Android 10
 and newer use scoped storage, so no broad storage permission prompt is needed;
 older Android versions request storage access when saving. Opening **Device

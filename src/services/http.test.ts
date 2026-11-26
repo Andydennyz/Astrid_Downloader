@@ -197,6 +197,126 @@ describe("HTTP service authentication", () => {
     ).toHaveLength(2);
   });
 
+  it("includes completed device history in Android library pages", async () => {
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    getSupabaseSession.mockResolvedValue(null);
+    getGuestToken.mockReturnValue("guest-token");
+    window.localStorage.setItem(
+      HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "hist_job-1",
+          title: "Phone video",
+          creator: "Creator",
+          thumbnailUrl: "https://example.com/thumb.jpg",
+          sourceUrl: "https://www.youtube.com/watch?v=clip",
+          platform: "youtube",
+          kind: "video",
+          status: "completed",
+          durationSec: 60,
+          extension: "mp4",
+          qualityLabel: "720p",
+          sizeBytes: 1200,
+          filename: "MediaDock/videos/clip.mp4",
+          timestamp: new Date().toISOString(),
+        },
+      ]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        () =>
+          new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+          }),
+      ),
+    );
+
+    const items = await createHttpServices().library.list({ kind: "video" });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: "lib_job-1",
+      title: "Phone video",
+      filename: "MediaDock/videos/clip.mp4",
+      platform: "youtube",
+      height: 720,
+      sizeBytes: 1200,
+    });
+  });
+
+  it("includes local Android history in overview counts and storage totals", async () => {
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    getSupabaseSession.mockResolvedValue(null);
+    getGuestToken.mockReturnValue("guest-token");
+    const timestamp = new Date().toISOString();
+    window.localStorage.setItem(
+      HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "hist-complete",
+          title: "Completed video",
+          creator: "Creator",
+          thumbnailUrl: "",
+          sourceUrl: "https://example.com/video",
+          platform: "other",
+          kind: "video",
+          status: "completed",
+          durationSec: 60,
+          extension: "mp4",
+          qualityLabel: "720p",
+          sizeBytes: 2048,
+          filename: "video.mp4",
+          timestamp,
+        },
+        {
+          id: "hist-failed",
+          title: "Failed audio",
+          creator: "Creator",
+          thumbnailUrl: "",
+          sourceUrl: "https://example.com/audio",
+          platform: "other",
+          kind: "audio",
+          status: "failed",
+          durationSec: 30,
+          extension: "mp3",
+          qualityLabel: "320 kbps",
+          timestamp,
+        },
+      ]),
+    );
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const body = url.includes("stats/overview")
+        ? {
+            totalDownloads: 0,
+            completed: 0,
+            failed: 0,
+            storageBytes: 0,
+            activity: [],
+          }
+        : [];
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stats = await createHttpServices().stats.getOverview(14);
+
+    expect(stats).toMatchObject({
+      totalDownloads: 2,
+      completed: 1,
+      failed: 1,
+      storageBytes: 2048,
+    });
+    expect(stats.activity.find((point) => point.date === timestamp.slice(0, 10)))
+      .toMatchObject({ video: 1, audio: 1 });
+  });
+
   it("clears local and database history together", async () => {
     getSupabaseSession.mockResolvedValue({ access_token: "signed-token" });
     window.localStorage.setItem(

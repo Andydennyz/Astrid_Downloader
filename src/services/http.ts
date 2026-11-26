@@ -4,6 +4,7 @@ import { Directory, Filesystem } from "@capacitor/filesystem";
 import {
   downloadToDownloads,
   getDownloadUri,
+  readNativeClipboardText,
 } from "./native-storage.ts";
 import type {
   AppServices,
@@ -18,10 +19,13 @@ import { getSupabaseSession } from "../lib/supabase.ts";
 import { getGuestToken } from "../lib/guest.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { ServiceError } from "./errors.ts";
+import { extractSharedMediaUrl } from "./shared-media-link.ts";
 import {
   clearLocalHistory,
   loadLocalHistory,
+  localLibraryFromHistory,
   mergeHistoryEntries,
+  mergeLibraryItems,
   rememberLocalHistory,
   removeLocalHistory,
   saveLocalHistory,
@@ -473,12 +477,37 @@ function createHttpLibraryService(): LibraryService {
       const payload = await request<Array<Record<string, unknown>>>(
         `library${suffix}`,
       );
-      return payload.map((item) => normalizeLibraryItem(item));
+      const remoteItems = payload.map((item) => normalizeLibraryItem(item));
+      if (Capacitor.getPlatform() !== "android") return remoteItems;
+
+      const historyPayload =
+        await request<Array<Record<string, unknown>>>("history");
+      const history = mergeHistoryEntries(
+        historyPayload.map((item) => normalizeHistoryEntry(item)),
+        loadLocalHistory(),
+      );
+      saveLocalHistory(history);
+      const items = mergeLibraryItems(
+        remoteItems,
+        localLibraryFromHistory(history),
+      );
+      const normalizedSearch = query?.search?.trim().toLowerCase();
+      return items.filter(
+        (item) =>
+          (!query?.kind || item.kind === query.kind) &&
+          (!normalizedSearch ||
+            `${item.title} ${item.creator} ${item.filename}`
+              .toLowerCase()
+              .includes(normalizedSearch)),
+      );
     },
     async remove(itemId) {
       await request(`library/${encodeURIComponent(itemId)}`, {
         method: "DELETE",
       });
+      if (itemId.startsWith("lib_")) {
+        removeLocalHistory(`hist_${itemId.slice("lib_".length)}`);
+      }
     },
     subscribe() {
       return () => undefined;
@@ -526,7 +555,62 @@ function createHttpStatsService(): StatsService {
       const payload = await request<Record<string, unknown>>(
         `stats/overview?days=${days}`,
       );
-      return normalizeOverviewStats(payload);
+      const stats = normalizeOverviewStats(payload);
+      if (Capacitor.getPlatform() !== "android") return stats;
+
+      const [historyPayload, libraryPayload] = await Promise.all([
+        request<Array<Record<string, unknown>>>("history"),
+        request<Array<Record<string, unknown>>>("library"),
+      ]);
+      const history = mergeHistoryEntries(
+        historyPayload.map((item) => normalizeHistoryEntry(item)),
+        loadLocalHistory(),
+      );
+      saveLocalHistory(history);
+      const library = mergeLibraryItems(
+        libraryPayload.map((item) => normalizeLibraryItem(item)),
+        localLibraryFromHistory(history),
+      );
+
+      const today = new Date();
+      const todayUtc = Date.UTC(
+        today.getUTCFullYear(),
+        today.getUTCMonth(),
+        today.getUTCDate(),
+      );
+      const startUtc = todayUtc - (days - 1) * 24 * 60 * 60 * 1000;
+      const dailyCounts = new Map<string, { video: number; audio: number }>();
+      let totalDownloads = 0;
+      let completed = 0;
+      let failed = 0;
+      for (const entry of history) {
+        const timestamp = new Date(entry.timestamp).getTime();
+        if (!Number.isFinite(timestamp) || timestamp < startUtc || timestamp >= todayUtc + 24 * 60 * 60 * 1000) {
+          continue;
+        }
+        totalDownloads += 1;
+        if (entry.status === "completed") completed += 1;
+        if (entry.status === "failed") failed += 1;
+        const date = new Date(timestamp).toISOString().slice(0, 10);
+        const counts = dailyCounts.get(date) ?? { video: 0, audio: 0 };
+        counts[entry.kind] += 1;
+        dailyCounts.set(date, counts);
+      }
+      const activity = Array.from({ length: days }, (_, offset) => {
+        const date = new Date(startUtc + offset * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .slice(0, 10);
+        return { date, ...(dailyCounts.get(date) ?? { video: 0, audio: 0 }) };
+      });
+
+      return {
+        ...stats,
+        totalDownloads,
+        completed,
+        failed,
+        storageBytes: library.reduce((total, item) => total + item.sizeBytes, 0),
+        activity,
+      };
     },
   };
 }
@@ -664,10 +748,15 @@ async function saveCompletedFileToDevice(
 }
 
 export function createHttpServices(): AppServices {
+  const media = createHttpMediaService();
+
   return {
-    media: createHttpMediaService(),
+    media,
     clipboard: {
       readText: async () => {
+        if (Capacitor.getPlatform() === "android") {
+          return readNativeClipboardText();
+        }
         if (typeof navigator === "undefined" || !navigator.clipboard) {
           throw new ServiceError(
             "CLIPBOARD_UNAVAILABLE",
@@ -687,11 +776,15 @@ export function createHttpServices(): AppServices {
         }
       },
       readSupportedUrl: async () => {
-        if (typeof navigator === "undefined" || !navigator.clipboard)
-          return null;
         try {
-          const text = await navigator.clipboard.readText();
-          return /https?:\/\//i.test(text) ? text : null;
+          const text = await (
+            Capacitor.getPlatform() === "android"
+              ? readNativeClipboardText()
+              : typeof navigator !== "undefined" && navigator.clipboard
+                ? navigator.clipboard.readText()
+                : Promise.resolve("")
+          );
+          return extractSharedMediaUrl(text, (url) => media.validateUrl(url).valid);
         } catch {
           return null;
         }

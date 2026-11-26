@@ -59,7 +59,15 @@ export function maxVideoHeight(formats: FormatOption[]): number {
   return heights.length ? Math.max(...heights) : 2160;
 }
 
-export function estimateBytes(kbps: number, durationSec: number) {
+export function estimateBytes(kbps: number, durationSec: number): number | null {
+  if (
+    !Number.isFinite(kbps) ||
+    kbps <= 0 ||
+    !Number.isFinite(durationSec) ||
+    durationSec <= 0
+  ) {
+    return null;
+  }
   return Math.round(((kbps * 1000) / 8) * durationSec);
 }
 
@@ -80,12 +88,22 @@ function fromCustom(format: FormatOption, durationSec: number): ResolvedSelectio
         ? `${format.bitrateKbps} kbps`
         : format.container.toUpperCase();
   const kbps =
-    format.bitrateKbps ?? (format.height ? nearestKbps(format.height) : 256);
+    format.bitrateKbps && format.bitrateKbps > 0
+      ? format.bitrateKbps
+      : format.height
+        ? nearestKbps(format.height)
+        : 256;
+  const sourceSize =
+    typeof format.estimatedSizeBytes === "number" &&
+    Number.isFinite(format.estimatedSizeBytes) &&
+    format.estimatedSizeBytes > 0
+      ? format.estimatedSizeBytes
+      : null;
   return {
     kind,
     extension: format.container,
     qualityLabel: label,
-    estimatedBytes: format.estimatedSizeBytes ?? estimateBytes(kbps, durationSec),
+    estimatedBytes: sourceSize ?? estimateBytes(kbps, durationSec),
     formatId: format.formatId,
     downgraded: false,
   };
@@ -104,6 +122,14 @@ export function resolveSelection(
   if (selection.mode === "audio") {
     const extension: FileExtension =
       selection.audioFormat === "best" ? "m4a" : selection.audioFormat;
+    const audioFormats = formats.filter(
+      (format) => format.kind === "audio" && (format.estimatedSizeBytes ?? 0) > 0,
+    );
+    const sourceSize = audioFormats.reduce(
+      (largest, format) =>
+        Math.max(largest, format.estimatedSizeBytes ?? 0),
+      0,
+    );
     return {
       kind: "audio",
       extension,
@@ -111,7 +137,10 @@ export function resolveSelection(
         selection.audioFormat === "best"
           ? "Best (256 kbps)"
           : AUDIO_LABEL[selection.audioFormat],
-      estimatedBytes: estimateBytes(AUDIO_KBPS[selection.audioFormat], durationSec),
+      estimatedBytes:
+        (selection.audioFormat === "best" && sourceSize > 0
+          ? sourceSize
+          : null) ?? estimateBytes(AUDIO_KBPS[selection.audioFormat], durationSec),
       formatId: `audio:${selection.audioFormat}`,
       downgraded: false,
     };
@@ -121,13 +150,49 @@ export function resolveSelection(
   const requested = qualityToHeight(selection.videoQuality);
   const height = requested === null ? available : Math.min(requested, available);
   const withAudio = selection.mode === "video+audio";
+  const selectedVideoFormats = formats.filter(
+    (format) =>
+      format.kind !== "audio" &&
+      typeof format.estimatedSizeBytes === "number" &&
+      format.estimatedSizeBytes > 0 &&
+      (!format.height || format.height <= height),
+  );
+  const muxedSize = selectedVideoFormats
+    .filter((format) => format.kind === "muxed")
+    .reduce(
+      (largest, format) =>
+        Math.max(largest, format.estimatedSizeBytes ?? 0),
+      0,
+    );
+  const videoSize = selectedVideoFormats
+    .filter((format) => format.kind === "video")
+    .reduce(
+      (largest, format) =>
+        Math.max(largest, format.estimatedSizeBytes ?? 0),
+      0,
+    );
+  const audioSize = formats
+    .filter(
+      (format) =>
+        format.kind === "audio" &&
+        typeof format.estimatedSizeBytes === "number" &&
+        format.estimatedSizeBytes > 0,
+    )
+    .reduce(
+      (largest, format) =>
+        Math.max(largest, format.estimatedSizeBytes ?? 0),
+      0,
+    );
   const kbps = nearestKbps(height) + (withAudio ? 160 : 0);
   return {
     kind: "video",
     extension: selection.container,
     qualityLabel:
       selection.videoQuality === "best" ? `Best (${height}p)` : `${height}p`,
-    estimatedBytes: estimateBytes(kbps, durationSec),
+    estimatedBytes:
+      (withAudio
+        ? muxedSize || (videoSize > 0 && audioSize > 0 ? videoSize + audioSize : 0)
+        : videoSize || muxedSize) || estimateBytes(kbps, durationSec),
     formatId: `video:${height}:${selection.container}${withAudio ? "+audio:best" : ""}`,
     downgraded: requested !== null && requested > available,
   };

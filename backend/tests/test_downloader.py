@@ -56,11 +56,76 @@ def test_video_plus_audio_selection_requires_audio_and_uses_the_selected_contain
     assert worker._pick_format(job) == (
         "bestvideo[height<=1080]+bestaudio/"
         "bestvideo[width<=1080]+bestaudio/"
-        "best[height<=1080]/best[width<=1080]"
+        "best[height<=1080]/best[width<=1080]/bestvideo+bestaudio/best"
     )
     output_path = worker._build_output_path(job)
     assert output_path.suffix == ".%(ext)s"
     assert worker._final_output_path(output_path, job).suffix == ".webm"
+
+
+@pytest.mark.parametrize("format_id", ["137", "137+140", "hls-720"])
+def test_custom_format_selection_is_used_by_the_downloader(format_id: str) -> None:
+    job = DownloadJob(
+        id="job-custom",
+        user_id="user-1",
+        title="Custom format",
+        destination=".",
+        kind="video",
+        selection_json=json.dumps(
+            {"mode": "video+audio", "customFormatId": format_id}
+        ),
+    )
+
+    assert DownloadWorker()._pick_format(job) == (
+        f"{format_id}/bestvideo+bestaudio/best"
+    )
+
+
+def test_video_only_mode_falls_back_to_muxed_sources() -> None:
+    job = DownloadJob(
+        id="job-muxed",
+        user_id="user-1",
+        title="Muxed video",
+        destination=".",
+        kind="video",
+        selection_json=json.dumps({"mode": "video", "videoQuality": "best"}),
+    )
+    formats = [
+        {
+            "format_id": "muxed",
+            "ext": "mp4",
+            "url": "https://example.com/video",
+            "width": 720,
+            "height": 1280,
+            "vcodec": "h264",
+            "acodec": "aac",
+        },
+    ]
+
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        selected = list(
+            ydl.build_format_selector(DownloadWorker()._pick_format(job))(
+                {"formats": formats, "incomplete": True}
+            )
+        )
+
+    assert selected[0]["format_id"] == "muxed"
+
+
+def test_custom_format_selection_rejects_format_expressions() -> None:
+    job = DownloadJob(
+        id="job-invalid-custom",
+        user_id="user-1",
+        title="Invalid custom format",
+        destination=".",
+        kind="video",
+        selection_json=json.dumps(
+            {"mode": "video+audio", "customFormatId": "137/best"}
+        ),
+    )
+
+    with pytest.raises(ValueError, match="selected media format is invalid"):
+        DownloadWorker()._pick_format(job)
 
 
 @pytest.mark.parametrize(

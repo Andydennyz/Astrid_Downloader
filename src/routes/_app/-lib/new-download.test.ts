@@ -77,6 +77,27 @@ describe("resolveSelection", () => {
     );
     expect(resolved).toMatchObject({ kind: "audio", extension: "flac", qualityLabel: "Lossless" });
   });
+
+  it("uses source file sizes when duration is unavailable", () => {
+    const resolved = resolveSelection(
+      { mode: "video+audio", videoQuality: "720p", audioFormat: "best", container: "mp4" },
+      [
+        { ...video(720), kind: "muxed", estimatedSizeBytes: 12_000_000 },
+        { ...audio, estimatedSizeBytes: 2_000_000 },
+      ],
+      0,
+    );
+    expect(resolved.estimatedBytes).toBe(12_000_000);
+  });
+
+  it("does not present an unknown estimate as zero bytes", () => {
+    const resolved = resolveSelection(
+      { mode: "video+audio", videoQuality: "best", audioFormat: "best", container: "mp4" },
+      [video(720), audio],
+      0,
+    );
+    expect(resolved.estimatedBytes).toBeNull();
+  });
 });
 
 describe("filenames", () => {

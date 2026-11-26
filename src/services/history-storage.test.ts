@@ -4,6 +4,7 @@ import {
   clearLocalHistory,
   historyEntryFromJob,
   HISTORY_STORAGE_KEY,
+  libraryItemFromHistory,
   loadLocalHistory,
   mergeHistoryEntries,
   rememberLocalHistory,
@@ -51,6 +52,27 @@ describe("device history storage", () => {
     expect(mergeHistoryEntries([updatedEntry], [localEntry])).toEqual([
       updatedEntry,
     ]);
+  });
+
+  it("creates a library card model from completed local history", () => {
+    expect(
+      libraryItemFromHistory({
+        ...localEntry,
+        id: "hist_job-1",
+        sourceUrl: "https://www.youtube.com/watch?v=clip",
+        qualityLabel: "1080p",
+        filename: "MediaDock/videos/clip.mp4",
+        sizeBytes: 1200,
+      }),
+    ).toMatchObject({
+      id: "lib_job-1",
+      kind: "video",
+      filename: "MediaDock/videos/clip.mp4",
+      height: 1080,
+      sizeBytes: 1200,
+      platform: "youtube",
+      filePath: "",
+    });
   });
 
   it("creates a local history record when a download reaches a final state", () => {

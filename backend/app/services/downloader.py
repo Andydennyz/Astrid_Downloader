@@ -253,11 +253,17 @@ class DownloadWorker:
                 "no_warnings": True,
                 "outtmpl": str(file_path),
                 "format": self._pick_format(job),
+                "retries": 10,
+                "fragment_retries": 10,
+                "extractor_retries": 3,
+                "file_access_retries": 3,
                 "progress_hooks": [_hook],
                 "paths": {"home": str(file_path.parent)},
             }
 
-            if job.kind == "audio":
+            selection = self._selection(job)
+            has_custom_format = bool(selection.get("customFormatId"))
+            if job.kind == "audio" and not has_custom_format:
                 ydl_opts["postprocessors"] = [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": self._preferred_audio_codec(job.extension),
@@ -381,7 +387,11 @@ class DownloadWorker:
             extension = "mp4"
         job_suffix = re.sub(r"[^A-Za-z0-9]", "", job.id)[:8] or "download"
         selection = self._selection(job)
-        if job.kind == "audio" or selection.get("mode") == "video+audio":
+        if (
+            job.kind == "audio"
+            or selection.get("mode") == "video+audio"
+            or selection.get("customFormatId")
+        ):
             return base_dir / f"{base_name}-{job_suffix}.%(ext)s"
         return base_dir / f"{base_name}-{job_suffix}.{extension}"
 
@@ -414,6 +424,19 @@ class DownloadWorker:
 
     def _pick_format(self, job: DownloadJob) -> str:
         selection = self._selection(job)
+        fallback = self._preset_format(selection)
+        custom_format_id = selection.get("customFormatId")
+        if custom_format_id is not None:
+            if not isinstance(custom_format_id, str) or not re.fullmatch(
+                r"[A-Za-z0-9._+-]{1,128}", custom_format_id
+            ):
+                raise ValueError("The selected media format is invalid.")
+            return fallback if custom_format_id == "best" else f"{custom_format_id}/{fallback}"
+
+        return fallback
+
+    @staticmethod
+    def _preset_format(selection: dict[str, Any]) -> str:
         mode = str(selection.get("mode") or "video")
         if mode == "audio":
             return "bestaudio/best"
@@ -430,23 +453,23 @@ class DownloadWorker:
             else ""
         )
         if not height_filter:
-            return "bestvideo" if mode == "video" else "bestvideo+bestaudio/best"
+            return "bestvideo/best" if mode == "video" else "bestvideo+bestaudio/best"
         if mode == "video":
             return (
                 f"bestvideo{height_filter}/bestvideo{width_filter}"
-                f"/best{height_filter}/best{width_filter}"
+                f"/best{height_filter}/best{width_filter}/bestvideo/best"
             )
         if mode == "video+audio":
             return (
                 f"bestvideo{height_filter}+bestaudio/"
                 f"bestvideo{width_filter}+bestaudio/"
-                f"best{height_filter}/best{width_filter}"
+                f"best{height_filter}/best{width_filter}/bestvideo+bestaudio/best"
             )
         if quality in {"2160p", "1440p", "1080p", "720p", "480p", "360p"}:
             return (
                 f"bestvideo{height_filter}+bestaudio/"
                 f"bestvideo{width_filter}+bestaudio/"
-                f"best{height_filter}/best{width_filter}"
+                f"best{height_filter}/best{width_filter}/bestvideo+bestaudio/best"
             )
         return "bestvideo+bestaudio/best"
 
@@ -597,6 +620,7 @@ class DownloadWorker:
             job.status = "completed"
             job.progress = 1.0
             job.file_path = output_path
+            job.extension = Path(output_path).suffix.lstrip(".") or job.extension
             job.completed_at = datetime.now(timezone.utc)
             job.error = None
 

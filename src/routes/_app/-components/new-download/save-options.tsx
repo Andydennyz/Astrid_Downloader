@@ -97,7 +97,16 @@ export default function SaveOptions({
             <Row label="Type" value={resolved.kind === "audio" ? "Audio" : "Video"} />
             <Row label="Quality" value={resolved.qualityLabel} />
             <Row label="Format" value={resolved.extension.toUpperCase()} />
-            <Row label="Estimated size" value={<span className="tabular-nums">≈ {formatBytes(resolved.estimatedBytes)}</span>} />
+            <Row
+              label="Estimated size"
+              value={
+                <span className="tabular-nums">
+                  {resolved.estimatedBytes === null
+                    ? "Unknown until download starts"
+                    : `≈ ${formatBytes(resolved.estimatedBytes)}`}
+                </span>
+              }
+            />
           </div>
           {resolved.downgraded && (
             <p className="mt-2 flex items-start gap-2 rounded-lg bg-amber-500/10 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-300">

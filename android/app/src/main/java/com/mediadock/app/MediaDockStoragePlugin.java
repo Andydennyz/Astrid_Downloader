@@ -1,9 +1,13 @@
 package com.mediadock.app;
 
 import android.Manifest;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.ContentUris;
+import android.content.Context;
+import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -69,6 +73,68 @@ import java.util.concurrent.Executors;
 public class MediaDockStoragePlugin extends Plugin {
     private static final String TAG = "MediaDockStorage";
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private boolean initialSharedTextConsumed;
+
+    @PluginMethod
+    public void readClipboardText(PluginCall call) {
+        try {
+            ClipboardManager clipboard = (ClipboardManager) getContext()
+                .getSystemService(Context.CLIPBOARD_SERVICE);
+            String text = "";
+            if (clipboard != null && clipboard.hasPrimaryClip()) {
+                ClipData clip = clipboard.getPrimaryClip();
+                if (clip != null && clip.getItemCount() > 0) {
+                    CharSequence itemText = clip.getItemAt(0).coerceToText(getContext());
+                    if (itemText != null) text = itemText.toString();
+                }
+            }
+            JSObject result = new JSObject();
+            result.put("text", text);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Could not read clipboard text.", error);
+        }
+    }
+
+    @PluginMethod
+    public void getInitialSharedText(PluginCall call) {
+        String text = "";
+        if (!initialSharedTextConsumed) {
+            initialSharedTextConsumed = true;
+            String sharedText = extractSharedText(getActivity().getIntent());
+            if (sharedText != null) text = sharedText;
+        }
+        JSObject result = new JSObject();
+        result.put("text", text);
+        call.resolve(result);
+    }
+
+    @Override
+    protected void handleOnNewIntent(Intent intent) {
+        super.handleOnNewIntent(intent);
+        String text = extractSharedText(intent);
+        if (text == null) return;
+
+        initialSharedTextConsumed = true;
+        JSObject result = new JSObject();
+        result.put("text", text);
+        notifyListeners("sharedText", result, true);
+    }
+
+    private String extractSharedText(Intent intent) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return null;
+        String type = intent.getType();
+        if (type != null && !type.startsWith("text/")) return null;
+
+        CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        if (text == null && intent.getClipData() != null
+            && intent.getClipData().getItemCount() > 0) {
+            text = intent.getClipData().getItemAt(0).coerceToText(getContext());
+        }
+        if (text == null) return null;
+        String value = text.toString().trim();
+        return value.isEmpty() ? null : value;
+    }
 
     @PluginMethod
     public void requestLegacyStoragePermission(PluginCall call) {

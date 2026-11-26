@@ -49,7 +49,7 @@ export type FormatOption = {
   audioCodec?: string;
   bitrateKbps?: number;
   sampleRateHz?: number;
-  estimatedSizeBytes?: number;
+  estimatedSizeBytes?: number | null;
   note?: string;
 };
 

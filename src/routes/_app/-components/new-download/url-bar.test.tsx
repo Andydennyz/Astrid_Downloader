@@ -60,4 +60,29 @@ describe("UrlBar clipboard fallback", () => {
       },
     );
   });
+
+  it("pastes and analyzes a supported link from the clipboard", async () => {
+    const url = "https://www.instagram.com/reel/abc123/";
+    const onUrlChange = vi.fn();
+    const onAnalyze = vi.fn();
+    clipboardReadText.mockResolvedValue(`A reel: ${url}`);
+    validateUrl.mockReturnValue({ valid: true, platform: "instagram" });
+
+    render(
+      <UrlBar
+        url=""
+        onUrlChange={onUrlChange}
+        onAnalyze={onAnalyze}
+        onClear={vi.fn()}
+        analyzing={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Paste" }));
+
+    await waitFor(() => {
+      expect(onUrlChange).toHaveBeenCalledWith(url);
+      expect(onAnalyze).toHaveBeenCalledWith(url);
+    });
+  });
 });

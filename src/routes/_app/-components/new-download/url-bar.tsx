@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner.tsx";
 import { PLATFORM_LABEL } from "@/lib/format.ts";
 import { cn } from "@/lib/utils.ts";
 import { getServices } from "@/services/index.ts";
+import { extractSharedMediaUrl } from "@/services/shared-media-link.ts";
 import { SAMPLE_LINKS } from "../../-lib/new-download.ts";
 
 type UrlBarProps = {
@@ -54,9 +55,14 @@ export default function UrlBar({ url, onUrlChange, onAnalyze, onClear, analyzing
         toast.info("Your clipboard is empty");
         return;
       }
-      lastDetectedUrl.current = text;
-      onUrlChange(text);
-      submit(text);
+      const services = getServices();
+      const value =
+        extractSharedMediaUrl(text, (candidate) =>
+          services.media.validateUrl(candidate).valid,
+        ) ?? text;
+      lastDetectedUrl.current = value;
+      onUrlChange(value);
+      submit(value);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Clipboard access was blocked";
       inputRef.current?.focus();
@@ -67,6 +73,9 @@ export default function UrlBar({ url, onUrlChange, onAnalyze, onClear, analyzing
   };
 
   useEffect(() => {
+    const initialDetection = window.setTimeout(() => {
+      void detectFromClipboard();
+    }, 0);
     const handleFocus = () => {
       void detectFromClipboard();
     };
@@ -80,6 +89,7 @@ export default function UrlBar({ url, onUrlChange, onAnalyze, onClear, analyzing
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
+      window.clearTimeout(initialDetection);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };

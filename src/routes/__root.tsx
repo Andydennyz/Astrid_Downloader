@@ -1,14 +1,17 @@
 import { useEffect } from "react";
 import type { QueryClient } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
 import {
   HeadContent,
   Link,
   Outlet,
   Scripts,
   createRootRouteWithContext,
+  useNavigate,
   useLocation,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
+import { toast } from "sonner";
 import AuthProvider from "@/components/providers/auth.tsx";
 import ThemeProvider from "@/components/providers/theme.tsx";
 import RouteError from "@/components/route-error.tsx";
@@ -17,6 +20,12 @@ import { Toaster } from "@/components/ui/sonner.tsx";
 import { TooltipProvider } from "@/components/ui/tooltip.tsx";
 import { useAuthErrorToast } from "@/hooks/use-auth-error-toast.ts";
 import { site } from "@/lib/site.ts";
+import {
+  addSharedTextListener,
+  getInitialSharedText,
+} from "@/services/native-storage.ts";
+import { getServices } from "@/services/index.ts";
+import { extractSharedMediaUrl } from "@/services/shared-media-link.ts";
 import appCss from "@/index.css?url";
 
 export const Route = createRootRouteWithContext<{
@@ -42,6 +51,51 @@ export const Route = createRootRouteWithContext<{
 
 function RootComponent() {
   useAuthErrorToast();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== "android") return;
+
+    let active = true;
+    let removeListener: (() => void) | undefined;
+    const handleSharedText = (text: string) => {
+      if (!active) return;
+      const url = extractSharedMediaUrl(text, (candidate) =>
+        getServices().media.validateUrl(candidate).valid,
+      );
+      if (!url) {
+        toast.info("The shared content does not include a valid web link.");
+        return;
+      }
+      void navigate({ to: "/new", search: { url } });
+    };
+
+    void (async () => {
+      try {
+        const listener = await addSharedTextListener(({ text }) =>
+          handleSharedText(text),
+        );
+        if (!active) {
+          void listener.remove();
+          return;
+        }
+        removeListener = () => {
+          void listener.remove();
+        };
+        const initial = await getInitialSharedText();
+        if (initial.text) handleSharedText(initial.text);
+      } catch (error) {
+        console.error("Could not initialize Android share handling.", error);
+        toast.error("MediaDock could not receive the shared link.");
+      }
+    })();
+
+    return () => {
+      active = false;
+      removeListener?.();
+    };
+  }, [navigate]);
+
   return <Outlet />;
 }
 

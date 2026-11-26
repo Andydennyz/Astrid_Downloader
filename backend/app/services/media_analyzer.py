@@ -50,6 +50,18 @@ def _format_formats(info: dict[str, Any]) -> list[dict[str, Any]]:
         if not entry.get("format_id"):
             continue
 
+        estimated_size = entry.get("filesize")
+        if not isinstance(estimated_size, (int, float)) or estimated_size <= 0:
+            estimated_size = entry.get("filesize_approx")
+        if (
+            not isinstance(estimated_size, (int, float))
+            or isinstance(estimated_size, bool)
+            or estimated_size <= 0
+        ):
+            estimated_size = None
+        elif isinstance(estimated_size, float):
+            estimated_size = int(estimated_size)
+
         height = entry.get("height")
         width = entry.get("width")
         if isinstance(height, int) and isinstance(width, int):
@@ -66,7 +78,7 @@ def _format_formats(info: dict[str, Any]) -> list[dict[str, Any]]:
             "audioCodec": entry.get("acodec"),
             "bitrateKbps": int(entry.get("tbr") or 0) if entry.get("tbr") is not None else None,
             "sampleRateHz": entry.get("asr"),
-            "estimatedSizeBytes": entry.get("filesize") or entry.get("filesize_approx"),
+            "estimatedSizeBytes": estimated_size,
             "note": entry.get("format_note"),
         }
         formats.append(format_record)

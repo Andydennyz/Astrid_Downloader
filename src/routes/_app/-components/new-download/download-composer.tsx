@@ -20,6 +20,9 @@ import FormatOptions from "./format-options.tsx";
 import MediaPreview from "./media-preview.tsx";
 import SaveOptions from "./save-options.tsx";
 
+// Re-enable after the production backend exposes the media preview endpoint.
+const SHOW_ON_DEMAND_PREVIEW = false;
+
 /** Everything after a successful analysis: preview, options, start. */
 export default function DownloadComposer({
   info,
@@ -47,6 +50,9 @@ export default function DownloadComposer({
   });
   const finalFolder = outputFolder(".", resolved.kind, info.creator, settings.general);
   const previewKind = resolved.kind;
+  const customFormat = selection.customFormatId
+    ? info.formats.find((format) => format.formatId === selection.customFormatId)
+    : undefined;
 
   const handlePreview = async () => {
     setPreviewing(true);
@@ -75,7 +81,18 @@ export default function DownloadComposer({
       creator: info.creator,
       thumbnailUrl: info.thumbnailUrl,
       durationSec: info.durationSec,
-      selection,
+      selection: customFormat
+        ? {
+            ...selection,
+            mode:
+              customFormat.kind === "audio"
+                ? "audio"
+                : customFormat.kind === "video"
+                  ? "video"
+                  : "video+audio",
+            container: customFormat.container === "webm" ? "webm" : "mp4",
+          }
+        : selection,
       filename: filename.trim() || defaultFilename,
       destination: finalFolder,
     });
@@ -123,31 +140,33 @@ export default function DownloadComposer({
   return (
     <div className="flex flex-col gap-5">
       <MediaPreview info={info} />
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-2"
-          disabled={previewing}
-          onClick={() => void handlePreview()}
-        >
-          {previewing ? (
-            <Spinner />
-          ) : previewKind === "audio" ? (
-            <Music2 />
-          ) : (
-            <CirclePlay />
-          )}
-          {previewing
-            ? "Preparing preview…"
-            : previewKind === "audio"
-              ? "Listen without downloading"
-              : "Watch without downloading"}
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          Streamed from the source; it is not saved to your device.
-        </p>
-      </div>
+      {SHOW_ON_DEMAND_PREVIEW && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            disabled={previewing}
+            onClick={() => void handlePreview()}
+          >
+            {previewing ? (
+              <Spinner />
+            ) : previewKind === "audio" ? (
+              <Music2 />
+            ) : (
+              <CirclePlay />
+            )}
+            {previewing
+              ? "Preparing preview…"
+              : previewKind === "audio"
+                ? "Listen without downloading"
+                : "Watch without downloading"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Streamed from the source; it is not saved to your device.
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="min-w-0">
           <FormatOptions info={info} selection={selection} onChange={setSelection} />

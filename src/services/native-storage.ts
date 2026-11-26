@@ -1,6 +1,12 @@
-import { registerPlugin } from "@capacitor/core";
+import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
 type MediaDockStoragePlugin = {
+  readClipboardText(): Promise<{ text: string }>;
+  getInitialSharedText(): Promise<{ text: string }>;
+  addListener(
+    eventName: "sharedText",
+    listener: (event: { text: string }) => void,
+  ): Promise<PluginListenerHandle>;
   requestLegacyStoragePermission(): Promise<{ granted: boolean }>;
   requestDeviceMediaPermissions(): Promise<{
     granted: boolean;
@@ -43,6 +49,20 @@ type MediaDockStoragePlugin = {
 };
 
 const MediaDockStorage = registerPlugin<MediaDockStoragePlugin>("MediaDockStorage");
+
+export async function readNativeClipboardText() {
+  return (await MediaDockStorage.readClipboardText()).text;
+}
+
+export function getInitialSharedText() {
+  return MediaDockStorage.getInitialSharedText();
+}
+
+export function addSharedTextListener(
+  listener: (event: { text: string }) => void,
+) {
+  return MediaDockStorage.addListener("sharedText", listener);
+}
 
 export function requestLegacyStoragePermission() {
   return MediaDockStorage.requestLegacyStoragePermission();

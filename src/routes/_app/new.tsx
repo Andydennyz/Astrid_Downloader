@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { RotateCcw, ShieldAlert } from "lucide-react";
 import { z } from "zod";
 import { PageContainer } from "@/components/layout.tsx";
@@ -37,18 +37,22 @@ function NewDownloadPage() {
   const { user } = useAuth();
   const settingsQuery = useSettings();
   const settings = settingsQuery.data;
-  const autoRan = useRef(false);
+  const lastAutoAnalyzedUrl = useRef<string | null>(null);
+  const navigate = useNavigate();
 
-  // A link passed in the address (e.g. "?url=...") is analyzed once on arrival.
+  // Analyze each newly shared or linked URL, including while this route is open.
   useEffect(() => {
-    if (autoRan.current || !search.url) return;
-    autoRan.current = true;
+    if (!search.url || lastAutoAnalyzedUrl.current === search.url) return;
+    lastAutoAnalyzedUrl.current = search.url;
+    setUrl(search.url);
+    reset();
     void analyze(search.url);
-  }, [analyze, search.url]);
+  }, [analyze, reset, search.url]);
 
   const clear = () => {
     setUrl("");
     reset();
+    void navigate({ to: "/new", search: {}, replace: true });
   };
 
   return (

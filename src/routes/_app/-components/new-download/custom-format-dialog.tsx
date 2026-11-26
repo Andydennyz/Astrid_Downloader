@@ -100,7 +100,12 @@ export default function CustomFormatDialog({
                     {f.note && <span className="text-muted-foreground"> — {f.note}</span>}
                   </span>
                   <span className="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:block">
-                    {formatBytes(f.estimatedSizeBytes)}
+                    {formatBytes(
+                      typeof f.estimatedSizeBytes === "number" &&
+                        f.estimatedSizeBytes > 0
+                        ? f.estimatedSizeBytes
+                        : null,
+                    )}
                   </span>
                   <span className={cn("grid size-5 shrink-0 place-items-center rounded-full", active ? "bg-primary text-primary-foreground" : "ring-1 ring-border")}>
                     {active && <Check className="size-3" />}
