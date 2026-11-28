@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, createFileRoute, useHydrated } from "@tanstack/react-router";
-import { ArrowRight, Link2 } from "lucide-react";
+import { ArrowRight, Link2, TriangleAlert } from "lucide-react";
 import { PageContainer, Panel, PanelHeader } from "@/components/layout.tsx";
 import DataLoadError from "@/components/data-load-error.tsx";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { useHistory, useOverview } from "@/hooks/use-media-data.ts";
@@ -128,6 +129,52 @@ function OverviewPage() {
           <ArrowRight className="opacity-60" />
         </Button>
       </div>
+      <Alert className="items-start border-amber-500/30 bg-amber-500/5 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
+        <TriangleAlert className="mt-0.5" />
+        <div>
+          <AlertTitle className="text-base">
+            MediaDock is Temporarily Unavailable
+          </AlertTitle>
+          <AlertDescription className="mt-1 space-y-3">
+            <p className="font-medium text-foreground">
+              We're making some improvements!
+            </p>
+            <p>
+              MediaDock is currently undergoing backend maintenance as we work
+              on infrastructure improvements and system upgrades to deliver a
+              faster, more reliable experience.
+            </p>
+            <p>
+              During this period, some features and services may be temporarily
+              unavailable.
+            </p>
+            <div>
+              <p className="mb-1 font-medium text-foreground">
+                What's happening?
+              </p>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Backend infrastructure upgrades.</li>
+                <li>API service maintenance.</li>
+                <li>Performance and reliability improvements.</li>
+              </ul>
+            </div>
+            <p>
+              <strong className="text-foreground">Your data matters.</strong>{" "}
+              Your existing account information and stored data remain
+              unaffected by this maintenance.
+            </p>
+            <p>
+              We apologize for the inconvenience and appreciate your patience
+              while we work behind the scenes.
+            </p>
+            <p>
+              We'll be back soon!
+              <br />— The MediaDock Team
+            </p>
+            <p>Thank you for being part of MediaDock.</p>
+          </AlertDescription>
+        </div>
+      </Alert>
       {overviewQuery.isError && (
         <DataLoadError
           error={overviewQuery.error}
